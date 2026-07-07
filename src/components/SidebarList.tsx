@@ -1,0 +1,139 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React from 'react';
+import { Etablissement } from '../types';
+import { MapPin, Landmark, HelpCircle, Eye, ShieldAlert, ChevronRight } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+
+interface SidebarListProps {
+  establishments: Etablissement[];
+  selectedId: string | null;
+  onSelectEstablishment: (establishment: Etablissement) => void;
+}
+
+export default function SidebarList({
+  establishments,
+  selectedId,
+  onSelectEstablishment
+}: SidebarListProps) {
+  
+  const getCategoryColor = (category: string) => {
+    if (category === "Clinique Privée") {
+      return "bg-blue-50 text-blue-800 border-blue-200";
+    } else if (category === "Ophtalmologie") {
+      return "bg-cyan-50 text-cyan-800 border-cyan-200";
+    } else if (category === "Cabinet Médical") {
+      return "bg-indigo-50 text-indigo-800 border-indigo-200";
+    } else {
+      return "bg-slate-50 text-slate-800 border-slate-200";
+    }
+  };
+
+  const getCategoryIcon = (category: string) => {
+    if (category === "Clinique Privée") {
+      return <Landmark className="h-3 w-3 mr-1" />;
+    } else if (category === "Ophtalmologie") {
+      return <Eye className="h-3 w-3 mr-1" />;
+    } else if (category === "Cabinet Médical") {
+      return <ShieldAlert className="h-3 w-3 mr-1" />;
+    } else {
+      return <HelpCircle className="h-3 w-3 mr-1" />;
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* Header of Sidebar List */}
+      <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+        <div>
+          <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
+            <span>RÉSULTATS</span>
+            <span className="px-2 py-0.5 bg-slate-900 text-white rounded-md text-[10px] font-black">
+              {establishments.length}
+            </span>
+          </h2>
+          <p className="text-[10px] text-slate-400 font-semibold uppercase mt-0.5">Établissements correspondants</p>
+        </div>
+        <div className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">
+          TRI PAR PERTINENCE
+        </div>
+      </div>
+
+      {/* List container */}
+      <div className="flex-1 overflow-y-auto divide-y divide-slate-100 max-h-[600px] lg:max-h-none scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+        <AnimatePresence initial={false}>
+          {establishments.length === 0 ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="p-8 text-center"
+            >
+              <div className="flex justify-center mb-3">
+                <div className="p-3 bg-slate-50 rounded-full text-slate-400 border border-slate-100">
+                  <MapPin className="h-6 w-6" />
+                </div>
+              </div>
+              <h3 className="text-xs font-black uppercase text-slate-700">Aucun établissement</h3>
+              <p className="text-[10px] text-slate-400 mt-1 max-w-[200px] mx-auto font-semibold leading-relaxed">
+                Essayez de modifier vos critères de recherche ou de réinitialiser les filtres.
+              </p>
+            </motion.div>
+          ) : (
+            establishments.map((etab) => {
+              const isSelected = etab.id === selectedId;
+              return (
+                <motion.div
+                  key={etab.id}
+                  id={`etab-item-${etab.id}`}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className={`p-4 transition-all duration-150 cursor-pointer text-left relative ${
+                    isSelected
+                      ? "bg-slate-50 border-l-4 border-slate-900 shadow-sm"
+                      : "hover:bg-slate-50/50 border-l-4 border-transparent"
+                  }`}
+                  onClick={() => onSelectEstablishment(etab)}
+                >
+                  <div className="flex flex-col gap-1.5">
+                    {/* Category */}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${getCategoryColor(etab.categorie)}`}>
+                        {getCategoryIcon(etab.categorie)}
+                        {etab.categorie}
+                      </span>
+                      <ChevronRight className={`h-4 w-4 transition-transform ${isSelected ? 'text-blue-500 translate-x-1' : 'text-slate-300'}`} />
+                    </div>
+
+                    {/* Establishment Name */}
+                    <h3 className={`text-xs font-black tracking-tight leading-snug transition-colors ${
+                      isSelected ? "text-slate-950 text-sm" : "text-slate-800"
+                    }`}>
+                      {etab.nom}
+                    </h3>
+
+                    {/* Location Info */}
+                    <div className="flex items-start gap-1 text-[11px] text-slate-500 leading-normal">
+                      <MapPin className="h-3.5 w-3.5 mt-0.5 flex-shrink-0 text-slate-400" />
+                      <div>
+                        <span className="font-bold text-slate-800">{etab.quartier}</span>, {etab.ville}
+                        <p className="text-[10px] text-slate-400 mt-0.5 truncate max-w-[230px]" title={etab.adresse}>
+                          {etab.adresse}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
