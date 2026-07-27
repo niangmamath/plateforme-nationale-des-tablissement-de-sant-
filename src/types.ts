@@ -9,6 +9,7 @@ export interface Etablissement {
   categorie: string;
   ville: string;
   quartier: string;
+  arrondissement?: string;
   adresse: string;
   latitude: number;
   longitude: number;
@@ -32,5 +33,6 @@ export interface KpiData {
   totalQuartiers: number;
   totalCliniques: number;
   totalOphtalmologues: number;
+  totalDermatologues: number;
   totalCabinets: number;
 }

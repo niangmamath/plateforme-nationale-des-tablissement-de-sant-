@@ -72,7 +72,7 @@ export default function FilterSection({
         </div>
 
         {/* Dropdowns */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-3 gap-4">
           {/* Ville filter */}
           <div className="relative">
             <label htmlFor="filter-ville" className="block text-[10px] uppercase font-black tracking-widest text-slate-400 mb-1.5 flex items-center gap-1">
@@ -91,24 +91,7 @@ export default function FilterSection({
             </select>
           </div>
 
-          {/* Quartier filter */}
-          <div className="relative">
-            <label htmlFor="filter-quartier" className="block text-[10px] uppercase font-black tracking-widest text-slate-400 mb-1.5 flex items-center gap-1">
-              <MapPin className="h-3 w-3 text-amber-500" /> QUARTIER
-            </label>
-            <select
-              id="filter-quartier"
-              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-slate-800 focus:ring-4 focus:ring-slate-900/5 transition-all text-xs font-bold cursor-pointer disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-400"
-              value={filters.quartier}
-              onChange={(e) => handleSelectChange('quartier', e.target.value)}
-              disabled={!filters.ville && quartiers.length === 0}
-            >
-              <option value="">{filters.ville ? `Tous les quartiers (${quartiers.length})` : "Sélectionnez une ville"}</option>
-              {quartiers.map(q => (
-                <option key={q} value={q}>{q}</option>
-              ))}
-            </select>
-          </div>
+         
 
           {/* Catégorie filter */}
           <div className="relative">

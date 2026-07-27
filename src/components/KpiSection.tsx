@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Building2, Eye, MapPin, Layers, Globe, Activity } from 'lucide-react';
+import { Building2, Eye, MapPin, Layers, Globe, Activity, Sparkles } from 'lucide-react';
 import { KpiData } from '../types';
 import { motion } from 'motion/react';
 
@@ -47,7 +47,7 @@ export default function KpiSection({ kpis }: KpiSectionProps) {
       value: kpis.totalCliniques.toLocaleString(),
       icon: Building2,
       textColor: "text-emerald-600",
-      iconColor: "text-purple-500",
+      iconColor: "text-emerald-500",
       desc: "Privées & Publiques"
     },
     {
@@ -56,10 +56,18 @@ export default function KpiSection({ kpis }: KpiSectionProps) {
       value: kpis.totalOphtalmologues.toLocaleString(),
       icon: Eye,
       textColor: "text-orange-500",
-      iconColor: "text-cyan-500",
+      iconColor: "text-orange-500",
       desc: "Spécialistes vision"
     },
-    
+    {
+      id: "kpi-dermatologues",
+      label: "Dermato",
+      value: kpis.totalDermatologues.toLocaleString(),
+      icon: Sparkles,
+      textColor: "text-purple-600",
+      iconColor: "text-purple-500",
+      desc: "Spécialistes peau"
+    }
   ];
 
   return (

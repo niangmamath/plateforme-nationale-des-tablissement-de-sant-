@@ -3,258 +3,458 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import BusinessPlanGenerator from './BusinessPlanGenerator';
 import React, { useState, useMemo } from 'react';
 import { Etablissement } from '../types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
-import { BarChart3, PieChart as PieIcon, Landmark, HelpCircle, Eye, ShieldCheck, TrendingUp, Sparkles } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
+import { BarChart3, PieChart as PieIcon, TrendingUp, Sparkles, LayoutDashboard, Map, Users, Stethoscope, ChevronUp, ChevronDown, ChevronsUpDown, Target, FileText, MessageSquare } from 'lucide-react';
 import { motion } from 'motion/react';
+import { SPECIALTIES_CONFIG } from '../config/specialties'; // IMPORT DU CERVEAU !
 
 interface StatsDashboardProps {
   establishments: Etablissement[];
 }
 
+const ARRONDISSEMENTS_DEMO = [
+  { nom: "Ben-M'sick", ville: "Casablanca", population: 105549, densite: 33938, pop15_59: 60.00, pop60_plus: 17.40, prixM2: 7700 },
+  { nom: "Al-Fida", ville: "Casablanca", population: 125777, densite: 33186, pop15_59: 59.10, pop60_plus: 15.80, prixM2: 8400 },
+  { nom: "Mers Sultan", ville: "Casablanca", population: 97529, densite: 26502, pop15_59: 58.90, pop60_plus: 13.90, prixM2: 12200 },
+  { nom: "Sidi Othmane", ville: "Casablanca", population: 211894, densite: 26257, pop15_59: 61.10, pop60_plus: 20.10, prixM2: 6500 },
+  { nom: "Hay Mohammadi", ville: "Casablanca", population: 104137, densite: 24794, pop15_59: 59.90, pop60_plus: 17.00, prixM2: 7600 },
+  { nom: "Moulay Rachid", ville: "Casablanca", population: 244692, densite: 22932, pop15_59: 62.20, pop60_plus: 23.40, prixM2: 6000 },
+  { nom: "Sbata", ville: "Casablanca", population: 101624, densite: 22237, pop15_59: 60.90, pop60_plus: 18.20, prixM2: 7100 },
+  { nom: "Sidi Moumen", ville: "Casablanca", population: 551118, densite: 21010, pop15_59: 63.30, pop60_plus: 24.80, prixM2: 6300 },
+  { nom: "Roches Noires", ville: "Casablanca", population: 104694, densite: 14581, pop15_59: 61.60, pop60_plus: 21.50, prixM2: 10500 },
+  { nom: "Sidi Belyout", ville: "Casablanca", population: 136392, densite: 13846, pop15_59: 59.70, pop60_plus: 16.40, prixM2: 14500 },
+  { nom: "Hay Hassani", ville: "Casablanca", population: 536887, densite: 13133, pop15_59: 64.30, pop60_plus: 29.60, prixM2: 9500 },
+  { nom: "Sidi Bernoussi", ville: "Casablanca", population: 153621, densite: 12020, pop15_59: 62.00, pop60_plus: 22.20, prixM2: 7500 },
+  { nom: "Aïn Chock", ville: "Casablanca", population: 350000, densite: 12500, pop15_59: 63.00, pop60_plus: 23.70, prixM2: 10000 },
+  { nom: "El Maarif", ville: "Casablanca", population: 170000, densite: 14166, pop15_59: 61.20, pop60_plus: 21.00, prixM2: 15500 },
+  { nom: "Anfa", ville: "Casablanca", population: 150000, densite: 10000, pop15_59: 58.90, pop60_plus: 14.70, prixM2: 18500 },
+  { nom: "Aïn Sebaâ", ville: "Casablanca", population: 250000, densite: 15625, pop15_59: 62.50, pop60_plus: 23.50, prixM2: 9100 },
+  { nom: "Agdal", ville: "Fès", population: 144000, densite: 7200, pop15_59: 61.90, pop60_plus: 23.70, prixM2: 7500 },
+  { nom: "Saïss", ville: "Fès", population: 200000, densite: 6666, pop15_59: 60.30, pop60_plus: 14.40, prixM2: 6500 },
+  { nom: "Zouagha", ville: "Fès", population: 260000, densite: 10400, pop15_59: 59.10, pop60_plus: 10.80, prixM2: 5000 },
+  { nom: "Méchouar Fès Jdid", ville: "Fès", population: 35000, densite: 11666, pop15_59: 61.80, pop60_plus: 19.80, prixM2: 5500 }
+];
+
 export default function StatsDashboard({ establishments }: StatsDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'ville' | 'categorie' | 'quartier' | 'source'>('ville');
+  type TabType = 'demographie' | 'scoring' | 'ville' | 'quartier' | 'categorie' | 'source';
+  const [activeTab, setActiveTab] = useState<TabType>('demographie');
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
 
-  // Solid, high-contrast palette
-  const COLOR_PALETTE = [
-    '#0f172a', // Slate 900
-    '#2563eb', // Blue 600
-    '#4f46e5', // Indigo 600
-    '#0891b2', // Cyan 600
-    '#16a34a', // Green 600
-    '#ea580c', // Orange 600
-    '#db2777', // Pink 600
-    '#7c3aed'  // Purple 600
-  ];
+  // Initialiser sur la première spécialité du fichier de config
+  const initialSpecialty = Object.keys(SPECIALTIES_CONFIG)[0];
+  const [targetSpecialty, setTargetSpecialty] = useState<string>(initialSpecialty);
+  
+  const [isBpOpen, setIsBpOpen] = useState(false);
+  const [selectedArrondissementForBp, setSelectedArrondissementForBp] = useState<any>(null);
 
-  // --- Aggregate data ---
+  const COLOR_PALETTE = ['#2563eb', '#0ea5e9', '#4f46e5', '#10b981', '#8b5cf6', '#f43f5e', '#f59e0b'];
+
+  const demographicAnalysis = useMemo(() => {
+    const currentVilles = new Set(establishments.map(e => e.ville));
+
+    return ARRONDISSEMENTS_DEMO.map(arr => {
+      const arrNameClean = arr.nom.toLowerCase().replace(/[-'\s]/g, '');
+      const etabsInArr = establishments.filter(e => {
+        const etabArrClean = (e.arrondissement || '').toLowerCase().replace(/[-'\s]/g, '');
+        return etabArrClean === arrNameClean || etabArrClean.includes(arrNameClean) || arrNameClean.includes(etabArrClean);
+      });
+
+      const cliniques = etabsInArr.filter(e => e.categorie.includes('Clinique')).length;
+      const ophtalmos = etabsInArr.filter(e => e.categorie.includes('Ophtalmo')).length;
+      const dermatos = etabsInArr.filter(e => e.categorie.includes('Derma')).length;
+      const totalEtabs = cliniques + ophtalmos + dermatos;
+      const ratio100k = arr.population > 0 ? ((totalEtabs / arr.population) * 100000).toFixed(1) : "0.0";
+
+      return { ...arr, cliniques, ophtalmos, dermatos, totalEtabs, ratio100k, etabsInArr };
+    })
+    .filter(a => currentVilles.has(a.ville))
+    .filter(a => a.nom !== "Moulay Rachid" && a.nom !== "Zouagha");
+  }, [establishments]);
+
+  // ALGORITHME DE SCORING INTELLIGENT (Connecté à SPECIALTIES_CONFIG)
+  const recommendedAreas = useMemo(() => {
+    if (!targetSpecialty || !SPECIALTIES_CONFIG[targetSpecialty]) return [];
+    
+    const config = SPECIALTIES_CONFIG[targetSpecialty];
+
+    return demographicAnalysis.map(arr => {
+      // 1. Calcul du score Démographique (normalisé sur la tranche la plus haute)
+      const popRatio = arr[config.cibleKey] as number;
+      const popScore = (popRatio / (config.cibleKey === 'pop15_59' ? 65 : 30)) * 10;
+      
+      // 2. Calcul du score Pouvoir d'Achat (basé sur l'immo)
+      const powerScore = (arr.prixM2 / 20000) * 10;
+      
+      // 3. Calcul de la Concurrence
+      // On compte les établissements locaux qui correspondent à notre spécialité
+      const specCount = arr.etabsInArr.filter(e => e.categorie.toLowerCase().includes(config.id.toLowerCase().substring(0, 5))).length;
+      const compScore = specCount === 0 ? 10 : Math.max(0, 10 - ((specCount / arr.population) * 100000));
+      
+      // 4. Score pondéré final
+      const rawScore = (popScore * config.scoring.popWeight) + 
+                       (powerScore * config.scoring.powerWeight) + 
+                       (compScore * config.scoring.compWeight);
+                       
+      // Mise à l'échelle sur 100
+      const sumWeights = config.scoring.popWeight + config.scoring.powerWeight + config.scoring.compWeight;
+      const finalScore = Math.min(100, Math.max(0, (rawScore / sumWeights) * 10));
+
+      return { ...arr, score: Math.round(finalScore), insight: config.scoring.insightFort };
+    }).sort((a, b) => b.score - a.score).slice(0, 3);
+  }, [demographicAnalysis, targetSpecialty]);
+
+  const sortedDemographics = useMemo(() => {
+    let sortableItems = [...demographicAnalysis];
+    if (sortConfig === null) {
+      sortableItems.sort((a, b) => b.totalEtabs - a.totalEtabs);
+      return sortableItems;
+    }
+    sortableItems.sort((a, b) => {
+      let aValue = a[sortConfig.key as keyof typeof a];
+      let bValue = b[sortConfig.key as keyof typeof b];
+      if (sortConfig.key === 'ratio100k') {
+        aValue = parseFloat(aValue as string);
+        bValue = parseFloat(bValue as string);
+      }
+      if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return sortableItems;
+  }, [demographicAnalysis, sortConfig]);
+
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'desc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'desc') direction = 'asc';
+    setSortConfig({ key, direction });
+  };
+
+  const getSortIcon = (key: string) => {
+    if (sortConfig?.key !== key) return <ChevronsUpDown className="h-3 w-3 text-slate-300 ml-1 inline shrink-0" />;
+    return sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3 text-blue-600 ml-1 inline shrink-0" /> : <ChevronDown className="h-3 w-3 text-blue-600 ml-1 inline shrink-0" />;
+  };
+
   const statsByVille = useMemo(() => {
     const counts: { [key: string]: number } = {};
-    establishments.forEach(e => {
-      counts[e.ville] = (counts[e.ville] || 0) + 1;
-    });
-    return Object.entries(counts)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
+    establishments.forEach(e => { counts[e.ville] = (counts[e.ville] || 0) + 1; });
+    return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   }, [establishments]);
 
   const statsByCategorie = useMemo(() => {
     const counts: { [key: string]: number } = {};
-    establishments
-      .filter(e => e.categorie !== "Cabinet Médical") // <--- ON EXCLUT LES CABINETS ICI
-      .forEach(e => {
-        counts[e.categorie] = (counts[e.categorie] || 0) + 1;
-      });
-    return Object.entries(counts)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
+    establishments.filter(e => e.categorie !== "Cabinet Médical").forEach(e => {
+      counts[e.categorie] = (counts[e.categorie] || 0) + 1;
+    });
+    return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   }, [establishments]);
 
   const statsByQuartier = useMemo(() => {
     const counts: { [key: string]: number } = {};
-    establishments.forEach(e => {
-      counts[e.quartier] = (counts[e.quartier] || 0) + 1;
-    });
-    // Limit to top 8 neighborhoods to avoid overcrowding the chart
-    return Object.entries(counts)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 8);
+    establishments.forEach(e => { counts[e.quartier] = (counts[e.quartier] || 0) + 1; });
+    return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 8);
   }, [establishments]);
 
   const statsBySource = useMemo(() => {
     const counts: { [key: string]: number } = {};
-    establishments.forEach(e => {
-      counts[e.source] = (counts[e.source] || 0) + 1;
-    });
-    return Object.entries(counts)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [establishments]);
-
-  // Total rating average
-  const avgRating = useMemo(() => {
-    const rated = establishments.filter(e => e.rating);
-    if (rated.length === 0) return 0;
-    const sum = rated.reduce((acc, curr) => acc + (curr.rating || 0), 0);
-    return Number((sum / rated.length).toFixed(2));
+    establishments.forEach(e => { counts[e.source] = (counts[e.source] || 0) + 1; });
+    return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   }, [establishments]);
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 md:p-6">
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-200 pb-4 mb-6">
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-white rounded-3xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-5 md:p-8 mt-6"
+    >
+      <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4 border-b border-slate-100 pb-5 mb-6">
         <div>
-          <h2 className="text-xs font-black uppercase tracking-widest text-slate-800 flex items-center gap-1.5">
-            <BarChart3 className="h-4 w-4 text-slate-900" />
-            <span>Statistiques & Analyse Décisionnelle</span>
+          <h2 className="text-sm font-black uppercase tracking-widest text-slate-900 flex items-center gap-2">
+            <LayoutDashboard className="h-5 w-5 text-blue-600" />
+            <span>Analytique & Intelligence Géospatiale</span>
           </h2>
-          <p className="text-[10px] font-semibold uppercase text-slate-400 mt-0.5">Distribution et insights en temps réel du réseau national</p>
+          <p className="text-[11px] font-semibold text-slate-500 mt-1">Plateforme d'Aide à la Décision - V2.0 (Dynamic Engine)</p>
         </div>
 
-        {/* Tab Buttons */}
-        <div className="flex p-1 bg-slate-100 border border-slate-200 rounded-xl max-w-full overflow-x-auto">
-          <button
-            id="tab-stat-ville"
-            onClick={() => setActiveTab('ville')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'ville' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            Villes
-          </button>
-          <button
-            id="tab-stat-quartier"
-            onClick={() => setActiveTab('quartier')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'quartier' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            Quartiers
-          </button>
-          <button
-            id="tab-stat-categorie"
-            onClick={() => setActiveTab('categorie')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'categorie' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            Catégories
-          </button>
-          <button
-            id="tab-stat-source"
-            onClick={() => setActiveTab('source')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'source' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            Sources
-          </button>
+        <div className="flex p-1.5 bg-slate-50/80 border border-slate-200/60 rounded-xl w-full xl:w-auto overflow-x-auto scrollbar-none shadow-inner">
+          {(['demographie', 'scoring', 'ville', 'quartier', 'categorie', 'source'] as TabType[]).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap ${
+                activeTab === tab 
+                  ? 'bg-white text-blue-700 shadow-sm border border-slate-200/50' 
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100/50'
+              }`}
+            >
+              {tab === 'demographie' ? 'Démographie' : tab === 'scoring' ? '🎯 Scoring IA' : tab}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left/Middle: Core Active Chart */}
-        <div className="lg:col-span-2 h-[300px] w-full min-w-0">
-          {establishments.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400">
-              <BarChart3 className="h-8 w-8 mb-2 stroke-1" />
-              <p className="text-xs font-bold uppercase">Données insuffisantes pour générer des graphiques</p>
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              {activeTab === 'ville' ? (
+      <div className="w-full min-h-[320px]">
+        {establishments.length === 0 ? (
+          <div className="h-full min-h-[320px] flex flex-col items-center justify-center text-slate-400 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+            <BarChart3 className="h-8 w-8 mb-2 stroke-1" />
+            <p className="text-xs font-bold uppercase">Données insuffisantes</p>
+          </div>
+        ) : (
+          <div className="h-full w-full">
+            
+            {/* ONGLET SCORING STRATÉGIQUE DYNAMIQUE */}
+            {activeTab === 'scoring' && (
+              <div className="animate-in fade-in duration-500">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                  <div className="flex items-center gap-3">
+                    <Target className="h-8 w-8 text-blue-600 p-1.5 bg-white rounded-lg shadow-sm" />
+                    <div>
+                      <h3 className="text-xs font-black text-slate-900 uppercase tracking-wide">Assistant d'Implantation Médicale</h3>
+                      <p className="text-[10px] font-medium text-slate-500 mt-0.5">Basé sur la population cible, le pouvoir d'achat (prix m²) et la concurrence.</p>
+                    </div>
+                  </div>
+                  
+                  {/* GENERATION DYNAMIQUE DES BOUTONS DE SPECIALITÉ */}
+                  <div className="flex flex-wrap gap-1 bg-white rounded-lg shadow-sm border border-slate-200 p-1">
+                    {Object.values(SPECIALTIES_CONFIG).map(spec => (
+                      <button 
+                        key={spec.id}
+                        onClick={() => setTargetSpecialty(spec.id)} 
+                        className={`px-4 py-1.5 text-[10px] font-bold uppercase rounded-md transition-colors ${targetSpecialty === spec.id ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+                      >
+                        {spec.id}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {recommendedAreas.map((arr, index) => (
+                    <div key={arr.nom} className="bg-white border-2 border-slate-100 rounded-2xl p-6 shadow-sm relative overflow-hidden transition-all hover:border-blue-200 hover:shadow-md flex flex-col justify-between">
+                      <div className="absolute top-0 right-0 bg-blue-600 text-white font-black text-[10px] uppercase px-3 py-1.5 rounded-bl-xl shadow-sm">Top {index + 1}</div>
+                      
+                      <div>
+                        <h4 className="text-lg font-black text-slate-900 leading-none">{arr.nom}</h4>
+                        <div className="text-3xl font-black text-emerald-500 mt-3 flex items-baseline gap-1">
+                          {arr.score} <span className="text-xs text-slate-400 font-semibold uppercase">/ 100</span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 mt-3 font-medium leading-relaxed border-l-2 border-blue-500 pl-3">
+                          {arr.insight}
+                        </p>
+                      </div>
+
+                      <div className="mt-5 space-y-3">
+                        <button 
+                          onClick={() => {
+                            setSelectedArrondissementForBp(arr);
+                            setIsBpOpen(true);
+                          }}
+                          className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white text-[11px] font-black uppercase tracking-wider py-3 rounded-xl hover:bg-blue-600 transition-colors shadow-sm"
+                        >
+                          <FileText className="h-4 w-4" /> Générer le Business Plan
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ONGLET DEMOGRAPHIE */}
+            {activeTab === 'demographie' && (
+              <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
+                <table className="w-full text-left border-collapse min-w-[950px] select-none">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-[9px] uppercase font-black tracking-wider text-slate-500">
+                      <th className="p-3 pl-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('nom')}>
+                        <Map className="h-3 w-3 inline mr-1" /> Arrondissement {getSortIcon('nom')}
+                      </th>
+                      <th className="p-3 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('population')}>
+                        <Users className="h-3 w-3 inline mr-1" /> Pop. {getSortIcon('population')}
+                      </th>
+                      <th className="p-3 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('densite')}>
+                        Densité {getSortIcon('densite')}
+                      </th>
+                      <th className="p-3 text-center border-l border-slate-200 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('pop15_59')}>
+                        15-59 ans {getSortIcon('pop15_59')}
+                      </th>
+                      <th className="p-3 text-center cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('pop60_plus')}>
+                        60+ ans {getSortIcon('pop60_plus')}
+                      </th>
+                      <th className="p-3 text-center cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('prixM2')}>
+                        Prix Immo {getSortIcon('prixM2')}
+                      </th>
+                      <th className="p-3 text-center border-l border-slate-200 text-emerald-700 bg-emerald-50/50 cursor-pointer hover:bg-emerald-100/50 transition-colors" onClick={() => handleSort('cliniques')}>
+                        Cliniques {getSortIcon('cliniques')}
+                      </th>
+                      <th className="p-3 text-center text-cyan-700 bg-cyan-50/50 cursor-pointer hover:bg-cyan-100/50 transition-colors" onClick={() => handleSort('ophtalmos')}>
+                        Ophtalmo. {getSortIcon('ophtalmos')}
+                      </th>
+                      <th className="p-3 text-center text-purple-700 bg-purple-50/50 cursor-pointer hover:bg-purple-100/50 transition-colors" onClick={() => handleSort('dermatos')}>
+                        Dermato. {getSortIcon('dermatos')}
+                      </th>
+                      <th className="p-3 text-center text-blue-800 bg-blue-100/50 cursor-pointer hover:bg-blue-200/50 transition-colors" onClick={() => handleSort('totalEtabs')}>
+                        Total {getSortIcon('totalEtabs')}
+                      </th>
+                      <th className="p-3 text-center bg-indigo-50/50 text-indigo-800 cursor-pointer hover:bg-indigo-100/50 transition-colors" onClick={() => handleSort('ratio100k')}>
+                        Couv. {getSortIcon('ratio100k')}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700 bg-white">
+                    {sortedDemographics.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="p-3 pl-4 font-bold text-slate-900">{row.nom} <span className="text-[9px] text-slate-400 font-normal ml-1">({row.ville})</span></td>
+                        <td className="p-3">{row.population.toLocaleString('fr-FR')}</td>
+                        
+                        <td className="p-3">
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm border ${row.densite > 20000 ? 'bg-red-50 text-red-700 border-red-100' : row.densite < 13000 ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                            {row.densite.toLocaleString('fr-FR')}
+                          </span>
+                        </td>
+
+                        <td className="p-3 text-center border-l border-slate-50">
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm border ${row.pop15_59 >= 62 ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : row.pop15_59 <= 59.5 ? 'bg-red-50 text-red-700 border-red-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                            {row.pop15_59.toFixed(1)}%
+                          </span>
+                        </td>
+
+                        <td className="p-3 text-center">
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm border ${row.pop60_plus >= 20 ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : row.pop60_plus <= 15 ? 'bg-red-50 text-red-700 border-red-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                            {row.pop60_plus.toFixed(1)}%
+                          </span>
+                        </td>
+                        
+                        <td className="p-3 text-center">
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm border ${row.prixM2 >= 14000 ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : row.prixM2 <= 8000 ? 'bg-red-50 text-red-700 border-red-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                            {row.prixM2.toLocaleString('fr-FR')} DH
+                          </span>
+                        </td>
+
+                        <td className="p-3 text-center font-black text-emerald-700 bg-emerald-50/10 border-l border-slate-50">{row.cliniques}</td>
+                        <td className="p-3 text-center font-black text-cyan-700 bg-cyan-50/10">{row.ophtalmos}</td>
+                        <td className="p-3 text-center font-black text-purple-700 bg-purple-50/10">{row.dermatos}</td>
+                        <td className="p-3 text-center font-black text-blue-800 bg-blue-50/20">{row.totalEtabs}</td>
+                        
+                        <td className="p-3 text-center bg-indigo-50/10">
+                          <span className={`px-2.5 py-1 rounded-lg font-black shadow-sm border text-[11px] ${Number(row.ratio100k) < 2 ? 'bg-red-50 text-red-700 border-red-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
+                            {row.ratio100k}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* GRAPHIQUES */}
+            {activeTab === 'ville' && (
+              <ResponsiveContainer width="100%" height={360}>
                 <BarChart data={statsByVille} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} className="font-bold" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} className="font-bold uppercase" />
                   <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} className="font-bold" />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)' }}
-                    labelStyle={{ fontWeight: 'black', fontSize: '11px', color: '#0f172a', textTransform: 'uppercase' }}
-                  />
-                  <Bar dataKey="value" name="Établissements" fill="#0f172a" radius={[4, 4, 0, 0]} barSize={40} />
+                  <RechartsTooltip cursor={{fill: '#f8fafc'}} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} labelStyle={{ color: '#0f172a', fontWeight: 'bold' }} />
+                  <Bar dataKey="value" name="Établissements" radius={[6, 6, 0, 0]} barSize={45}>
+                    {statsByVille.map((_, index) => ( <Cell key={`cell-${index}`} fill={COLOR_PALETTE[index % COLOR_PALETTE.length]} /> ))}
+                  </Bar>
                 </BarChart>
-              ) : activeTab === 'quartier' ? (
+              </ResponsiveContainer>
+            )}
+
+            {activeTab === 'quartier' && (
+              <ResponsiveContainer width="100%" height={360}>
                 <AreaChart data={statsByQuartier} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
                   <defs>
                     <linearGradient id="colorQuartier" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.2}/>
+                      <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3}/>
                       <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} className="font-bold" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} className="font-bold" />
                   <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} className="font-bold" />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)' }}
-                    labelStyle={{ fontWeight: 'black', fontSize: '11px', color: '#0f172a', textTransform: 'uppercase' }}
-                  />
+                  <RechartsTooltip contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
                   <Area type="monotone" dataKey="value" name="Établissements" stroke="#4f46e5" fillOpacity={1} fill="url(#colorQuartier)" strokeWidth={3} />
                 </AreaChart>
-              ) : activeTab === 'categorie' ? (
+              </ResponsiveContainer>
+            )}
+
+            {activeTab === 'categorie' && (
+              <ResponsiveContainer width="100%" height={360}>
                 <PieChart>
-                  <Pie
-                    data={statsByCategorie}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={90}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {statsByCategorie.map((entry, index) => (
+                  <Pie data={statsByCategorie} cx="50%" cy="50%" innerRadius={90} outerRadius={130} paddingAngle={4} dataKey="value" stroke="none">
+                    {statsByCategorie.map((_, index) => (
                       <Cell key={`cell-${index}`} fill={COLOR_PALETTE[index % COLOR_PALETTE.length]} />
                     ))}
                   </Pie>
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)' }}
-                  />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }} />
+                  <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', marginTop: '20px' }} />
                 </PieChart>
-              ) : (
+              </ResponsiveContainer>
+            )}
+
+            {activeTab === 'source' && (
+              <ResponsiveContainer width="100%" height={360}>
                 <BarChart data={statsBySource} layout="vertical" margin={{ top: 10, right: 10, left: 15, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
                   <XAxis type="number" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} className="font-bold" />
-                  <YAxis dataKey="name" type="category" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} width={80} className="font-bold" />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)' }}
-                  />
-                  <Bar dataKey="value" name="Données" fill="#16a34a" radius={[0, 4, 4, 0]} barSize={16} />
+                  <YAxis dataKey="name" type="category" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} width={100} className="font-bold" />
+                  <RechartsTooltip cursor={{fill: '#f8fafc'}} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                  <Bar dataKey="value" name="Données" fill="#10b981" radius={[0, 6, 6, 0]} barSize={20} />
                 </BarChart>
-              )}
-            </ResponsiveContainer>
-          )}
-        </div>
+              </ResponsiveContainer>
+            )}
+          </div>
+        )}
+      </div>
 
-        {/* Right Panel: Contextual Insights */}
-        <div className="flex flex-col justify-between border-t lg:border-t-0 lg:border-l border-slate-200 lg:pl-6 pt-6 lg:pt-0">
-          <div>
-            <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-              <span>Insights Clés</span>
-            </h3>
+      <div className="mt-8 pt-6 border-t border-slate-100">
+        <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-1.5">
+          <Sparkles className="h-4 w-4 text-blue-500" />
+          <span>Synthèse & Insights Stratégiques</span>
+        </h3>
 
-            <div className="space-y-3">
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-start gap-2.5">
-                <div className="p-1.5 bg-blue-100 text-blue-800 rounded-lg mt-0.5 border border-blue-200">
-                  <TrendingUp className="h-3.5 w-3.5 stroke-[2.5]" />
-                </div>
-                <div>
-                  <h4 className="text-[10px] font-black uppercase text-slate-800 leading-none">Densité Régionale</h4>
-                  <p className="text-[10px] font-semibold text-slate-500 mt-1.5 leading-relaxed">
-                    {statsByVille[0] ? (
-                      <>La ville de <span className="font-black text-slate-900">{statsByVille[0].name}</span> domine l'offre de soins nationale sur cette sélection avec <span className="font-black text-slate-900">{statsByVille[0].value}</span> établissements cartographiés.</>
-                    ) : 'Aucun établissement.'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-start gap-2.5">
-                <div className="p-1.5 bg-purple-100 text-purple-800 rounded-lg mt-0.5 border border-purple-200">
-                  <PieIcon className="h-3.5 w-3.5 stroke-[2.5]" />
-                </div>
-                <div>
-                  <h4 className="text-[10px] font-black uppercase text-slate-800 leading-none">Mix de Spécialités</h4>
-                  <p className="text-[10px] font-semibold text-slate-500 mt-1.5 leading-relaxed">
-                    {statsByCategorie[0] ? (
-                      <>Les <span className="font-black text-slate-900">{statsByCategorie[0].name}s</span> constituent la catégorie la plus représentée ({statsByCategorie[0].value} unités).</>
-                    ) : 'Aucun.'}
-                  </p>
-                </div>
-              </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50/50 rounded-2xl border border-blue-100/50 shadow-sm flex items-start gap-4">
+            <div className="p-2.5 bg-blue-100 text-blue-700 rounded-xl shrink-0 mt-1">
+              <TrendingUp className="h-5 w-5 stroke-[2.5]" />
+            </div>
+            <div>
+              <h4 className="text-[11px] font-black uppercase text-blue-900 tracking-wide">Densité Régionale</h4>
+              <p className="text-xs font-medium text-slate-600 leading-relaxed mt-1">
+                {statsByVille[0] ? (
+                  <>La ville de <span className="font-black text-blue-800">{statsByVille[0].name}</span> domine l'offre avec <span className="font-black text-blue-800">{statsByVille[0].value}</span> entités cartographiées.</>
+                ) : 'Aucun établissement.'}
+              </p>
             </div>
           </div>
 
-          <div className="mt-4 pt-4 border-t border-slate-200 flex items-center justify-between text-[10px]">
-            <div className="text-slate-400 font-black uppercase tracking-wider">Score moyen national</div>
-            <div className="flex items-center gap-1 bg-amber-50 text-amber-800 px-2.5 py-1 rounded-md font-black border border-amber-200 text-xs">
-              <span>★</span>
-              <span>{avgRating || "4.5"}</span>
-              <span className="text-slate-400 font-bold">/5</span>
+          <div className="p-4 bg-gradient-to-br from-slate-50 to-white rounded-2xl border border-slate-200/60 shadow-sm flex items-start gap-4">
+            <div className="p-2.5 bg-indigo-100 text-indigo-700 rounded-xl shrink-0 mt-1">
+              <PieIcon className="h-5 w-5 stroke-[2.5]" />
+            </div>
+            <div>
+              <h4 className="text-[11px] font-black uppercase text-slate-800 tracking-wide">Mix de Spécialités</h4>
+              <p className="text-xs font-medium text-slate-600 leading-relaxed mt-1">
+                {statsByCategorie[0] ? (
+                  <>Les <span className="font-black text-indigo-700">{statsByCategorie[0].name}s</span> constituent la catégorie majeure ({statsByCategorie[0].value} unités actives).</>
+                ) : 'Aucun.'}
+              </p>
             </div>
           </div>
         </div>
       </div>
-    </div>
+
+      <BusinessPlanGenerator 
+        isOpen={isBpOpen} 
+        onClose={() => setIsBpOpen(false)} 
+        arrondissement={selectedArrondissementForBp} 
+        specialty={targetSpecialty} 
+      />
+    </motion.div>
   );
 }
