@@ -12,12 +12,16 @@ interface InteractiveMapProps {
   establishments: Etablissement[];
   selectedId: string | null;
   onSelectEstablishment: (establishment: Etablissement) => void;
+  center?: [number, number]; // Nouvelles props pour la scalabilité
+  zoom?: number;             // Nouvelles props pour la scalabilité
 }
 
 export default function InteractiveMap({
   establishments,
   selectedId,
-  onSelectEstablishment
+  onSelectEstablishment,
+  center = [33.5731, -7.5898], // Casablanca par défaut
+  zoom = 12
 }: InteractiveMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -100,8 +104,8 @@ export default function InteractiveMap({
     if (!containerRef.current) return;
 
     const map = L.map(containerRef.current, {
-      center: [33.5731, -7.5898],
-      zoom: 6,
+      center: center,
+      zoom: zoom,
       zoomControl: false,
       attributionControl: false
     });
@@ -124,7 +128,14 @@ export default function InteractiveMap({
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, []); // Initialisation unique
+
+  // NOUVEAU : Effet pour recentrer la carte quand la ville change
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.flyTo(center, zoom, { animate: true, duration: 1.5 });
+  }, [center, zoom]);
 
   // Sync Tile Layer when style changes
   useEffect(() => {
@@ -248,7 +259,7 @@ export default function InteractiveMap({
         map.flyTo([latitude, longitude], 14, { duration: 1.5 });
       },
       () => {
-        map.flyTo([33.5731, -7.5898], 12, { duration: 1.5 });
+        map.flyTo(center, zoom, { duration: 1.5 });
       }
     );
   };

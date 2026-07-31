@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import BusinessPlanGenerator from './BusinessPlanGenerator';
+import BusinessPlanGenerator from './BusinessPlanOphtalmo.tsx';
 import React, { useState, useMemo } from 'react';
 import { Etablissement } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';

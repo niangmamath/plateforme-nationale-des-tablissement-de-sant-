@@ -2,6 +2,9 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
+import { AVAILABLE_COUNTRIES } from './data';
+import GlobalLocationSelector from './components/GlobalLocationSelector';
+import ScoringSection from './components/ScoringSection';
 import ChatbotWidget from './components/ChatbotWidget';
 import React, { useState, useMemo } from 'react';
 import { ESTABLISHMENTS_DATA, VILLES, CATEGORIES, SOURCES, getQuartiersByVille, computeKpis } from './data/etablissements';
@@ -16,6 +19,8 @@ import { Activity, Plus, Upload, Download, Database, CheckCircle, Info, Heart } 
 
 export default function App() {
   // Current active filtered state
+  const [selectedCountry, setSelectedCountry] = useState(AVAILABLE_COUNTRIES[0]); // Maroc par défaut
+  const [selectedCity, setSelectedCity] = useState(AVAILABLE_COUNTRIES[0].villes[0]); // Casablanca par défaut
   const [filters, setFilters] = useState<FilterState>({
     search: '',
     ville: '',
@@ -182,6 +187,17 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-slate-50 via-blue-50/40 to-slate-100 text-slate-800 font-sans selection:bg-blue-600 selection:text-white pb-12">
       
+      {/* LA NOUVELLE BARRE GLOBALE DE SÉLECTION PAYS / VILLE */}
+      <GlobalLocationSelector 
+        countries={AVAILABLE_COUNTRIES}
+        selectedCountry={selectedCountry}
+        selectedCity={selectedCity}
+        onCountryChange={setSelectedCountry}
+        onCityChange={setSelectedCity}
+      />
+
+
+
       {/* Toast Notification Container */}
       <div className="fixed bottom-5 right-5 z-[2000] pointer-events-none">
         {showImportToast && (
@@ -258,10 +274,9 @@ export default function App() {
           <FilterSection
             filters={filters}
             setFilters={setFilters}
-            villes={uniqueVilles}
             categories={uniqueCategories}
             sources={uniqueSources}
-            quartiers={uniqueQuartiers}
+            
           />
         </section>
 
@@ -301,6 +316,16 @@ export default function App() {
         <section id="analytics-section">
           <StatsDashboard establishments={filteredEstablishments} />
         </section>
+
+        {/* LA NOUVELLE SECTION DE SCORING EST ICI */}
+        <section id="scoring-section" className="mt-8">
+          <ScoringSection 
+            villeName={selectedCity.nom} 
+            zones={selectedCity.zones} 
+            currency={selectedCountry.devise}
+          />
+        </section>
+
       </main>
 
       {/* Footer */}
@@ -323,4 +348,4 @@ export default function App() {
       <ChatbotWidget />
     </div>
   );
-} 
+}

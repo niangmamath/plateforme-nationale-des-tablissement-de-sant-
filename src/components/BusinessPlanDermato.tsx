@@ -1,49 +1,79 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { X, FileText, Calculator, Landmark, Download, Plus, Trash2, Printer } from 'lucide-react';
 import { motion } from 'motion/react';
 
-interface BusinessPlanGeneratorProps {
+interface AreaData {
+  nom: string;
+  ville: string;
+  prixM2: number;
+  population: number;
+}
+
+interface BusinessPlanModalProps {
   isOpen: boolean;
   onClose: () => void;
-  area: any | null;
-  config: any | null; // Reçoit la configuration (ex: DERMATO_CONFIG)
+  area: AreaData | null;
+  specialty: string | null;
 }
+
+const PRIX_LOCATION: Record<string, number> = {
+  "Anfa": 210, "El Maarif": 145, "Hay Hassani": 135, "Sidi Belyout": 120,
+  "Aïn Chock": 100, "Roches Noires": 90, "Aïn Sebaâ": 80, "Sidi Moumen": 75,
+  "Sidi Bernoussi": 75, "Ben-M'sick": 65, "Al-Fida": 65, "Mers Sultan": 65,
+  "Sbata": 65, "Sidi Othmane": 65, "Hay Mohammadi": 65, "Moulay Rachid": 65,
+  "Agdal": 60, "Saïss": 50, "Zouagha": 40, "Méchouar Fès Jdid": 45
+};
 
 const formatDH = (num: number) => num.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' DH';
 const formatHT = (num: number) => num.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
-export default function BusinessPlanGenerator({ isOpen, onClose, area, config }: BusinessPlanGeneratorProps) {
+export default function BusinessPlanDermato({ isOpen, onClose, area, specialty }: BusinessPlanModalProps) {
   // --- ÉTATS DYNAMIQUES PRINCIPAUX ---
-  const [surface, setSurface] = useState<number>(0);
+  const [surface, setSurface] = useState<number>(80);
   const [typeOccupation, setTypeOccupation] = useState<'achat' | 'location'>('achat');
   
-  // États initialisés à vide, remplis par le useEffect
-  const [amenagements, setAmenagements] = useState<any[]>([]);
+  // 1. Aménagements (Modifiables)
+  const [amenagements, setAmenagements] = useState([
+    { id: 1, nom: "Aménagements standards (Accueil, Peinture, Réseau...)", prix: 41355 },
+    { id: 2, nom: "Mobilier d'accueil et décoration", prix: 15000 }
+  ]);
   const [newAmenagementNom, setNewAmenagementNom] = useState('');
   const [newAmenagementPrix, setNewAmenagementPrix] = useState('');
 
-  const [effectifs, setEffectifs] = useState<any[]>([]);
+  // 2. Effectifs (Modifiables)
+  const [effectifs, setEffectifs] = useState([
+    { id: 1, nom: "Médecin Dermatologue", qte: 1, salaire: 12000 },
+    { id: 2, nom: "Assistante Spécialisée (Esthétique)", qte: 1, salaire: 4000 }
+  ]);
   const [newEffectifNom, setNewEffectifNom] = useState('');
   const [newEffectifQte, setNewEffectifQte] = useState('');
   const [newEffectifSalaire, setNewEffectifSalaire] = useState('');
 
-  const [machines, setMachines] = useState<any[]>([]);
+  // 3. Matériel (Modifiable)
+  const [machines, setMachines] = useState([
+    { id: 1, nom: "LASER ÉPILATOIRE (ND:YAG / ALEXANDRITE)", prix: 380000 },
+    { id: 2, nom: "LASER CO2 FRACTIONNÉ (CICATRICES, RÉJUVÉNATION)", prix: 250000 },
+    { id: 3, nom: "DERMATOSCOPE NUMÉRIQUE HAUTE RÉSOLUTION (FOTOFINDER)", prix: 85000 },
+    { id: 4, nom: "FAUTEUIL D'EXAMEN ET DE SOINS ÉLECTRIQUE", prix: 35000 },
+    { id: 5, nom: "APPAREIL DE CRYOTHÉRAPIE AVEC ACCESSOIRES", prix: 20000 },
+    { id: 6, nom: "AUTOCLAVE (STÉRILISATION CLASSE B)", prix: 28000 },
+    { id: 7, nom: "LAMPE LOUPE LED SUR PIED & PETIT MATÉRIEL", prix: 12000 },
+    { id: 8, nom: "RÉFRIGÉRATEUR MÉDICAL (TOXINE BOTULIQUE)", prix: 8500 },
+    { id: 9, nom: "ÉQUIPEMENT INFORMATIQUE ET LOGICIEL DE GESTION", prix: 25000 }
+  ]);
   const [newMachineNom, setNewMachineNom] = useState('');
   const [newMachinePrix, setNewMachinePrix] = useState('');
 
-  const [actes, setActes] = useState<any[]>([]);
+  // 4. Actes (Modifiables)
+  const [actes, setActes] = useState([
+    { id: 1, type: 'Consultation', nom: "Consultation Dermatologique Classique", nbrJour: 10, prixUnitaire: 300 },
+    { id: 2, type: 'Esthétique', nom: "Séance d'Épilation Définitive (Laser)", nbrJour: 5, prixUnitaire: 600 },
+    { id: 3, type: 'Esthétique', nom: "Injections (Acide Hyaluronique / Botox)", nbrJour: 3, prixUnitaire: 2500 },
+    { id: 4, type: 'Soins', nom: "Peeling Médical / Soin Hydrafacial", nbrJour: 2, prixUnitaire: 800 },
+    { id: 5, type: 'Chirurgie', nom: "Petite Chirurgie (Exérèse de lésion, biopsie)", nbrJour: 2, prixUnitaire: 1000 },
+  ]);
 
-  // Synchronisation de la configuration entrante avec les états éditables
-  useEffect(() => {
-    if (config) {
-      setAmenagements([...config.amenagements]);
-      setEffectifs([...config.effectifs]);
-      setMachines([...config.machines]);
-      setActes([...config.actes]);
-    }
-  }, [config]);
-
-  if (!isOpen || !area || !config) return null;
+  if (!isOpen || !area || !specialty) return null;
 
   // --- LOGIQUE D'AJOUT ET MODIFICATION ---
   const handleUpdateAmenagement = (id: number, newPrix: number) => setAmenagements(amenagements.map(a => a.id === id ? { ...a, prix: newPrix } : a));
@@ -76,35 +106,34 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
   const handleUpdateActe = (id: number, field: 'nbrJour' | 'prixUnitaire', value: number) => setActes(actes.map(a => a.id === id ? { ...a, [field]: value } : a));
 
   // --- CALCULS MATHÉMATIQUES GLOBAUX ---
+  
+  // Aménagements
   const baseAmenagementHT = amenagements.reduce((acc, curr) => acc + curr.prix, 0);
   const surcoutSurfaceHT = (surface - 80) * 1500; 
   const totalAmenagementHT = baseAmenagementHT + surcoutSurfaceHT;
   const totalAmenagementTTC = totalAmenagementHT * 1.20;
 
+  // Effectifs
   const masseSalariale = effectifs.reduce((acc, curr) => acc + (curr.qte * curr.salaire), 0);
 
+  // Matériel
   const totalMaterielHT = machines.reduce((acc, curr) => acc + curr.prix, 0);
   const tvaMateriel = totalMaterielHT * 0.20;
   const totalMaterielTTC = totalMaterielHT + tvaMateriel;
 
-  // Utilisation dynamique des prix de l'area (au lieu du dictionnaire figé)
-  const loyerM2 = area.loyerM2 || 65; 
+  // Foncier
+  const loyerM2 = PRIX_LOCATION[area.nom] || 50; 
   const loyerMensuel = surface * loyerM2;
-  const investissementFoncier = typeOccupation === 'achat' ? surface * (area.prixM2 || 10000) : loyerMensuel * 4;
+  const investissementFoncier = typeOccupation === 'achat' ? surface * area.prixM2 : loyerMensuel * 4;
 
-  const fraisPreliminaires = config.fraisPreliminaires || 5000;
+  // Investissement Total
+  const fraisPreliminaires = 5000;
   const bfr = 25000;
-  const surfaceInitiale = config.surfaceDefaut || 80;
-
-  // Initialisation de la surface une seule fois au chargement
-  useEffect(() => {
-    if (config) setSurface(config.surfaceDefaut || 80);
-  }, [config]);
-  
   const totalInvestissement = fraisPreliminaires + investissementFoncier + totalAmenagementTTC + totalMaterielTTC + bfr + masseSalariale;
   const apportPersonnel = totalInvestissement * 0.11;
   const creditSollicite = totalInvestissement * 0.89;
 
+  // Exploitation
   const totalCAJour = actes.reduce((acc, acte) => acc + (acte.nbrJour * acte.prixUnitaire), 0);
   const totalCAAnnee = totalCAJour * 300;
 
@@ -115,7 +144,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
         
         {/* EN-TÊTE */}
         <div className="flex justify-between items-center p-4 bg-slate-900 text-white print:hidden">
-          <div className="flex items-center gap-3"><FileText className="h-6 w-6 text-blue-400" /><h2 className="text-lg font-black uppercase tracking-wide">{config.titre}</h2></div>
+          <div className="flex items-center gap-3"><FileText className="h-6 w-6 text-blue-400" /><h2 className="text-lg font-black uppercase tracking-wide">Business Plan - Dermatologie</h2></div>
           <div className="flex items-center gap-3">
             <button onClick={() => window.print()} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold uppercase transition-colors"><Printer className="h-4 w-4" /> PDF</button>
             <button onClick={onClose} className="p-2 bg-slate-800 hover:bg-rose-600 rounded-full transition-colors"><X className="h-5 w-5" /></button>
@@ -126,7 +155,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
         <div className="flex-1 overflow-y-auto p-6 md:p-10 print:p-0 bg-slate-50">
           <div className="text-center mb-10 border-b-2 border-slate-900 pb-6">
             <h1 className="text-3xl font-black uppercase mb-2 tracking-tight">Étude de Faisabilité et Business Plan</h1>
-            <p className="text-lg font-bold text-blue-700 uppercase">{config.specialiteNom} • {area.nom}</p>
+            <p className="text-lg font-bold text-blue-700 uppercase">Cabinet de Dermatologie & Médecine Esthétique • {area.nom}</p>
           </div>
 
           {/* PARAMÈTRES */}
@@ -146,7 +175,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-slate-500 uppercase">Indice Foncier</label>
-                <div className="px-4 py-2 bg-slate-100 rounded-xl font-bold text-slate-700 text-lg">{typeOccupation === 'achat' ? `${(area.prixM2 || 10000).toLocaleString('fr-FR')} DH/m²` : `${loyerM2} DH/m²/mois`}</div>
+                <div className="px-4 py-2 bg-slate-100 rounded-xl font-bold text-slate-700 text-lg">{typeOccupation === 'achat' ? `${area.prixM2.toLocaleString('fr-FR')} DH/m²` : `${loyerM2} DH/m²/mois`}</div>
               </div>
             </div>
           </div>
@@ -206,7 +235,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
 
           {/* MATÉRIEL MÉDICAL MODIFIABLE */}
           <div className="mb-12 page-break-inside-avoid">
-            <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">III. Équipement & Spécialités<span className="text-[10px] font-normal text-slate-500 uppercase print:hidden">Édition activée</span></h3>
+            <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">III. Équipement & Lasers<span className="text-[10px] font-normal text-slate-500 uppercase print:hidden">Édition activée</span></h3>
             <table className="w-full text-xs border-collapse border border-slate-300 bg-white">
               <thead><tr className="bg-slate-100"><th className="border p-3 text-left">Équipement</th><th className="border p-3 text-right w-40">Montant (DH)</th><th className="border p-3 w-12 print:hidden">X</th></tr></thead>
               <tbody>
@@ -280,7 +309,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
               <Landmark className="h-8 w-8 text-[#d4af37] shrink-0" />
               <div>
                 <h4 className="font-black text-[#856614] text-lg leading-tight mb-1">Demande de Financement</h4>
-                <p className="text-sm text-[#a3801f]">Enregistrez ce PDF pour le transmettre à la banque concernant le crédit de <strong className="font-black">{formatDH(creditSollicite)}</strong> pour votre projet.</p>
+                <p className="text-sm text-[#a3801f]">Enregistrez ce PDF pour le transmettre à la banque concernant le crédit de <strong className="font-black">{formatDH(creditSollicite)}</strong> pour votre projet Dermatologique.</p>
               </div>
             </div>
           </div>

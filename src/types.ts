@@ -36,3 +36,33 @@ export interface KpiData {
   totalDermatologues: number;
   totalCabinets: number;
 }
+
+// =========================================================
+// --- HIERARCHIE GÉOGRAPHIQUE SCALABLE (NOUVEAU) ---
+// =========================================================
+
+export interface ZoneGeo {
+  id: string;
+  nom: string;
+  lat: number;         // Pour la carte interactive
+  lng: number;         // Pour la carte interactive
+  population: number;
+  prixM2: number;      // Indice à l'achat
+  loyerM2: number;     // Indice à la location
+}
+
+export interface VilleGeo {
+  id: string;
+  nom: string;
+  lat: number;         // Centre de la ville
+  lng: number;         // Centre de la ville
+  zoomBase: number;    // Zoom de la carte par défaut
+  zones: ZoneGeo[];
+}
+
+export interface PaysGeo {
+  id: string;
+  nom: string;
+  devise: string;      // Ex: "DH", "FCFA", "€"
+  villes: VilleGeo[];
+}
