@@ -3,14 +3,36 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Target, Info, Stethoscope, Eye, Building2, TrendingUp, SlidersHorizontal } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 // LE GÉNÉRATEUR UNIVERSEL ET SES CONFIGURATIONS (L'ADN)
 import BusinessPlanGenerator from './BusinessPlanGenerator';
-import { DERMATO_CONFIG, OPHTALMO_CONFIG, CLINIQUE_CONFIG } from '../config/specialties';
 import { ZoneGeo } from '../types';
+
+interface SpecialitePoids {
+  valeur: number;
+  label: string;
+}
+
+interface SpecialiteApi {
+  id: string;
+  nom: string;
+  couleur: string;
+  titre: string;
+  specialiteNom: string;
+  cibleKey: string | null;
+  cibleLabel: string | null;
+  poids: SpecialitePoids[];
+  fraisPreliminaires: number;
+  surfaceDefaut: number;
+  bfr: number;
+  amenagements: { id: number; nom: string; prix: number }[];
+  effectifs: { id: number; nom: string; qte: number; salaire: number }[];
+  machines: { id: number; nom: string; prix: number }[];
+  actes: { id: number; type: string | null; nom: string; nbrJour: number; prixUnitaire: number }[];
+}
 
 // TON ANCIENNE BASE DE DONNÉES (Conservée comme "Dictionnaire" de statistiques médicales)
 const SANTE_DATA_DICTIONARY = [
@@ -48,16 +70,27 @@ export default function ScoringSection({ villeName = "Casablanca", zones = [], c
   const [selectedSpecialty, setSelectedSpecialty] = useState<SpecialtyType>(null);
   const [selectedAreaForBP, setSelectedAreaForBP] = useState<any | null>(null);
   const [isExpertMode, setIsExpertMode] = useState(false);
-  
+
   const [weights, setWeights] = useState({ w1: 50, w2: 30, w3: 20 });
+
+  // Config des spécialités (poids de scoring + templates de business plan) chargée depuis Postgres
+  const [specialites, setSpecialites] = useState<SpecialiteApi[]>([]);
+
+  useEffect(() => {
+    fetch('/api/specialites')
+      .then((r) => r.json())
+      .then(setSpecialites)
+      .catch(() => setSpecialites([]));
+  }, []);
 
   const handleSelectSpecialty = (spec: SpecialtyType) => {
     setSelectedSpecialty(spec);
     setIsExpertMode(false);
-    
-    if (spec === 'Dermatologie') setWeights({ w1: 55, w2: 25, w3: 20 });
-    if (spec === 'Ophtalmologie') setWeights({ w1: 50, w2: 30, w3: 20 });
-    if (spec === 'Clinique') setWeights({ w1: 40, w2: 30, w3: 30 });
+
+    const found = specialites.find((s) => s.id === spec);
+    if (found) {
+      setWeights({ w1: found.poids[0].valeur, w2: found.poids[1].valeur, w3: found.poids[2].valeur });
+    }
   };
 
   const rankedAreas = useMemo(() => {
@@ -127,20 +160,14 @@ export default function ScoringSection({ villeName = "Casablanca", zones = [], c
   }, [selectedSpecialty, weights, zones, villeName]);
 
   const getLabels = () => {
-    if (selectedSpecialty === 'Dermatologie') return ["Pouvoir d'achat (Prix/m²)", "Population Cible (15-59 ans)", "Faible Concurrence"];
-    if (selectedSpecialty === 'Ophtalmologie') return ["Population Sénior (60+ ans)", "Faible Concurrence", "Accessibilité Foncier Moyen"];
-    return ["Bassin de Population global", "Connectivité Routière", "Terrains Abordables"];
+    const found = specialites.find((s) => s.id === selectedSpecialty);
+    return found ? found.poids.map((p) => p.label) : ['', '', ''];
   };
 
   const totalW = weights.w1 + weights.w2 + weights.w3 || 1;
 
-  // SÉLECTION DYNAMIQUE DE LA CONFIGURATION (L'ADN DU BUSINESS PLAN)
-  const getActiveConfig = () => {
-    if (selectedSpecialty === 'Dermatologie') return DERMATO_CONFIG;
-    if (selectedSpecialty === 'Ophtalmologie') return OPHTALMO_CONFIG;
-    if (selectedSpecialty === 'Clinique') return CLINIQUE_CONFIG;
-    return null;
-  };
+  // SÉLECTION DYNAMIQUE DE LA CONFIGURATION (L'ADN DU BUSINESS PLAN), chargée depuis Postgres
+  const getActiveConfig = () => specialites.find((s) => s.id === selectedSpecialty) || null;
 
   return (
     <section className="bg-slate-900 rounded-3xl p-5 md:p-8 shadow-2xl border border-slate-800 text-white">

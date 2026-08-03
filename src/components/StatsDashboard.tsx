@@ -11,34 +11,22 @@ import { BarChart3, PieChart as PieIcon, TrendingUp, Sparkles, LayoutDashboard, 
 import { motion } from 'motion/react';
 import { SPECIALTIES_CONFIG } from '../config/specialties'; // IMPORT DU CERVEAU !
 
-interface StatsDashboardProps {
-  establishments: Etablissement[];
+interface ZoneDemographie {
+  nom: string;
+  ville: string;
+  population: number;
+  densite: number;
+  pop15_59: number;
+  pop60_plus: number;
+  prixM2: number;
 }
 
-const ARRONDISSEMENTS_DEMO = [
-  { nom: "Ben-M'sick", ville: "Casablanca", population: 105549, densite: 33938, pop15_59: 60.00, pop60_plus: 17.40, prixM2: 7700 },
-  { nom: "Al-Fida", ville: "Casablanca", population: 125777, densite: 33186, pop15_59: 59.10, pop60_plus: 15.80, prixM2: 8400 },
-  { nom: "Mers Sultan", ville: "Casablanca", population: 97529, densite: 26502, pop15_59: 58.90, pop60_plus: 13.90, prixM2: 12200 },
-  { nom: "Sidi Othmane", ville: "Casablanca", population: 211894, densite: 26257, pop15_59: 61.10, pop60_plus: 20.10, prixM2: 6500 },
-  { nom: "Hay Mohammadi", ville: "Casablanca", population: 104137, densite: 24794, pop15_59: 59.90, pop60_plus: 17.00, prixM2: 7600 },
-  { nom: "Moulay Rachid", ville: "Casablanca", population: 244692, densite: 22932, pop15_59: 62.20, pop60_plus: 23.40, prixM2: 6000 },
-  { nom: "Sbata", ville: "Casablanca", population: 101624, densite: 22237, pop15_59: 60.90, pop60_plus: 18.20, prixM2: 7100 },
-  { nom: "Sidi Moumen", ville: "Casablanca", population: 551118, densite: 21010, pop15_59: 63.30, pop60_plus: 24.80, prixM2: 6300 },
-  { nom: "Roches Noires", ville: "Casablanca", population: 104694, densite: 14581, pop15_59: 61.60, pop60_plus: 21.50, prixM2: 10500 },
-  { nom: "Sidi Belyout", ville: "Casablanca", population: 136392, densite: 13846, pop15_59: 59.70, pop60_plus: 16.40, prixM2: 14500 },
-  { nom: "Hay Hassani", ville: "Casablanca", population: 536887, densite: 13133, pop15_59: 64.30, pop60_plus: 29.60, prixM2: 9500 },
-  { nom: "Sidi Bernoussi", ville: "Casablanca", population: 153621, densite: 12020, pop15_59: 62.00, pop60_plus: 22.20, prixM2: 7500 },
-  { nom: "Aïn Chock", ville: "Casablanca", population: 350000, densite: 12500, pop15_59: 63.00, pop60_plus: 23.70, prixM2: 10000 },
-  { nom: "El Maarif", ville: "Casablanca", population: 170000, densite: 14166, pop15_59: 61.20, pop60_plus: 21.00, prixM2: 15500 },
-  { nom: "Anfa", ville: "Casablanca", population: 150000, densite: 10000, pop15_59: 58.90, pop60_plus: 14.70, prixM2: 18500 },
-  { nom: "Aïn Sebaâ", ville: "Casablanca", population: 250000, densite: 15625, pop15_59: 62.50, pop60_plus: 23.50, prixM2: 9100 },
-  { nom: "Agdal", ville: "Fès", population: 144000, densite: 7200, pop15_59: 61.90, pop60_plus: 23.70, prixM2: 7500 },
-  { nom: "Saïss", ville: "Fès", population: 200000, densite: 6666, pop15_59: 60.30, pop60_plus: 14.40, prixM2: 6500 },
-  { nom: "Zouagha", ville: "Fès", population: 260000, densite: 10400, pop15_59: 59.10, pop60_plus: 10.80, prixM2: 5000 },
-  { nom: "Méchouar Fès Jdid", ville: "Fès", population: 35000, densite: 11666, pop15_59: 61.80, pop60_plus: 19.80, prixM2: 5500 }
-];
+interface StatsDashboardProps {
+  establishments: Etablissement[];
+  zones: ZoneDemographie[];
+}
 
-export default function StatsDashboard({ establishments }: StatsDashboardProps) {
+export default function StatsDashboard({ establishments, zones }: StatsDashboardProps) {
   type TabType = 'demographie' | 'scoring' | 'ville' | 'quartier' | 'categorie' | 'source';
   const [activeTab, setActiveTab] = useState<TabType>('demographie');
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
@@ -55,7 +43,7 @@ export default function StatsDashboard({ establishments }: StatsDashboardProps) 
   const demographicAnalysis = useMemo(() => {
     const currentVilles = new Set(establishments.map(e => e.ville));
 
-    return ARRONDISSEMENTS_DEMO.map(arr => {
+    return zones.map(arr => {
       const arrNameClean = arr.nom.toLowerCase().replace(/[-'\s]/g, '');
       const etabsInArr = establishments.filter(e => {
         const etabArrClean = (e.arrondissement || '').toLowerCase().replace(/[-'\s]/g, '');
@@ -72,7 +60,7 @@ export default function StatsDashboard({ establishments }: StatsDashboardProps) 
     })
     .filter(a => currentVilles.has(a.ville))
     .filter(a => a.nom !== "Moulay Rachid" && a.nom !== "Zouagha");
-  }, [establishments]);
+  }, [establishments, zones]);
 
   // ALGORITHME DE SCORING INTELLIGENT (Connecté à SPECIALTIES_CONFIG)
   const recommendedAreas = useMemo(() => {

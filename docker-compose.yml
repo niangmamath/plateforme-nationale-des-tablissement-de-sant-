@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: medimplant-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-medimplant}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-medimplant}
+      POSTGRES_DB: ${POSTGRES_DB:-medimplant}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - medimplant-pgdata:/var/lib/postgresql/data
+
+  cms:
+    image: directus/directus:11
+    container_name: medimplant-directus
+    restart: unless-stopped
+    depends_on:
+      - db
+    ports:
+      - "${DIRECTUS_PORT:-8055}:8055"
+    environment:
+      KEY: ${DIRECTUS_KEY}
+      SECRET: ${DIRECTUS_SECRET}
+      DB_CLIENT: pg
+      # Pointe sur Supabase (pooler en mode session, adapté à un pool de connexions persistant comme Directus)
+      DB_CONNECTION_STRING: ${SUPABASE_DATABASE_URL_SESSION}
+      ADMIN_EMAIL: ${DIRECTUS_ADMIN_EMAIL:-admin@medimplant.local}
+      ADMIN_PASSWORD: ${DIRECTUS_ADMIN_PASSWORD:-medimplant}
+    volumes:
+      - medimplant-directus-uploads:/directus/uploads
+
+volumes:
+  medimplant-pgdata:
+  medimplant-directus-uploads:

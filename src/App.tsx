@@ -2,25 +2,51 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-import { AVAILABLE_COUNTRIES } from './data';
 import GlobalLocationSelector from './components/GlobalLocationSelector';
 import ScoringSection from './components/ScoringSection';
 import ChatbotWidget from './components/ChatbotWidget';
-import React, { useState, useMemo } from 'react';
-import { ESTABLISHMENTS_DATA, VILLES, CATEGORIES, SOURCES, getQuartiersByVille, computeKpis } from './data/etablissements';
-import { Etablissement, FilterState } from './types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { computeKpis } from './data/etablissements';
+import { Etablissement, FilterState, PaysGeo, VilleGeo } from './types';
 import KpiSection from './components/KpiSection';
 import FilterSection from './components/FilterSection';
 import SidebarList from './components/SidebarList';
 import InteractiveMap from './components/InteractiveMap';
 import StatsDashboard from './components/StatsDashboard';
 import { motion } from 'motion/react';
-import { Activity, Plus, Upload, Download, Database, CheckCircle, Info, Heart } from 'lucide-react';
+import { Activity, Plus, Download, Database, CheckCircle, Info, Heart } from 'lucide-react';
 
 export default function App() {
+  // Données chargées depuis l'API (Postgres)
+  const [countries, setCountries] = useState<PaysGeo[]>([]);
+  const [baseEstablishments, setBaseEstablishments] = useState<Etablissement[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/pays').then((r) => r.json()),
+      fetch('/api/etablissements').then((r) => r.json()),
+    ])
+      .then(([paysData, etabsData]: [PaysGeo[], Etablissement[]]) => {
+        setCountries(paysData);
+        setBaseEstablishments(etabsData);
+      })
+      .catch(() => setLoadError("Impossible de charger les données depuis l'API."))
+      .finally(() => setIsLoading(false));
+  }, []);
+
   // Current active filtered state
-  const [selectedCountry, setSelectedCountry] = useState(AVAILABLE_COUNTRIES[0]); // Maroc par défaut
-  const [selectedCity, setSelectedCity] = useState(AVAILABLE_COUNTRIES[0].villes[0]); // Casablanca par défaut
+  const [selectedCountry, setSelectedCountry] = useState<PaysGeo | null>(null);
+  const [selectedCity, setSelectedCity] = useState<VilleGeo | null>(null);
+
+  useEffect(() => {
+    if (countries.length > 0 && !selectedCountry) {
+      setSelectedCountry(countries[0]); // Maroc par défaut
+      setSelectedCity(countries[0].villes[0]); // Casablanca par défaut
+    }
+  }, [countries, selectedCountry]);
+
   const [filters, setFilters] = useState<FilterState>({
     search: '',
     ville: '',
@@ -29,45 +55,51 @@ export default function App() {
     source: ''
   });
 
+  // Quand on change de pays, les anciens filtres (ville/quartier) d'un autre pays n'ont plus de sens
+  useEffect(() => {
+    setFilters((prev) => ({ ...prev, ville: '', quartier: '' }));
+  }, [selectedCountry]);
+
   // Track currently highlighted/selected establishment
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Dynamic state for custom added establishments (Excel import simulation)
-  const [customEtablissements, setCustomEtablissements] = useState<Etablissement[]>([]);
   const [showImportToast, setShowImportToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
-  // Combined full dataset
-  const allEstablishments = useMemo(() => {
-    return [...ESTABLISHMENTS_DATA, ...customEtablissements];
-  }, [customEtablissements]);
+  // Établissements du pays actuellement sélectionné (via le sélecteur global en haut de page) :
+  // c'est ce périmètre qui alimente tout le reste de la page (annuaire, carte, KPIs, stats).
+  const scopedEstablishments = useMemo(() => {
+    if (!selectedCountry) return [];
+    const villesDuPays = new Set(selectedCountry.villes.map((v) => v.nom));
+    return baseEstablishments.filter((e) => villesDuPays.has(e.ville));
+  }, [baseEstablishments, selectedCountry]);
 
   // Compute unique filter options dynamically based on the active dataset
   const uniqueVilles = useMemo(() => {
-    return Array.from(new Set(allEstablishments.map(e => e.ville))).sort();
-  }, [allEstablishments]);
+    return Array.from(new Set(scopedEstablishments.map(e => e.ville))).sort();
+  }, [scopedEstablishments]);
 
   // Compute unique categories
   const uniqueCategories = useMemo(() => {
-    return Array.from(new Set(allEstablishments.map(e => e.categorie))).sort();
-  }, [allEstablishments]);
+    return Array.from(new Set(scopedEstablishments.map(e => e.categorie))).sort();
+  }, [scopedEstablishments]);
 
   // Compute unique sources
   const uniqueSources = useMemo(() => {
-    return Array.from(new Set(allEstablishments.map(e => e.source))).sort();
-  }, [allEstablishments]);
+    return Array.from(new Set(scopedEstablishments.map(e => e.source))).sort();
+  }, [scopedEstablishments]);
 
   // Compute neighborhoods conditioned on selected city
   const uniqueQuartiers = useMemo(() => {
     if (!filters.ville) {
-      return Array.from(new Set(allEstablishments.map(e => e.quartier))).sort();
+      return Array.from(new Set(scopedEstablishments.map(e => e.quartier))).sort();
     }
-    return Array.from(new Set(allEstablishments.filter(e => e.ville === filters.ville).map(e => e.quartier))).sort();
-  }, [allEstablishments, filters.ville]);
+    return Array.from(new Set(scopedEstablishments.filter(e => e.ville === filters.ville).map(e => e.quartier))).sort();
+  }, [scopedEstablishments, filters.ville]);
 
   // Filter the list of establishments based on FilterState
   const filteredEstablishments = useMemo(() => {
-    return allEstablishments.filter((etab) => {
+    return scopedEstablishments.filter((etab) => {
       // Text Search: match name, address, category or neighborhood
       if (filters.search) {
         const query = filters.search.toLowerCase();
@@ -91,71 +123,34 @@ export default function App() {
 
       return true;
     });
-  }, [allEstablishments, filters]);
+  }, [scopedEstablishments, filters]);
 
   // Calculate dashboard indicators dynamically
   const kpis = useMemo(() => {
     return computeKpis(filteredEstablishments);
   }, [filteredEstablishments]);
 
+  // Zones à plat (tous pays confondus) pour l'onglet Démographie de StatsDashboard —
+  // remplace l'ancien tableau ARRONDISSEMENTS_DEMO codé en dur (Maroc uniquement).
+  const allZones = useMemo(() => {
+    return countries.flatMap((pays) =>
+      pays.villes.flatMap((ville) =>
+        ville.zones.map((zone) => ({
+          nom: zone.nom,
+          ville: ville.nom,
+          population: zone.population,
+          densite: zone.densite ?? 0,
+          pop15_59: zone.pop15_59 ?? 0,
+          pop60_plus: zone.pop60_plus ?? 0,
+          prixM2: zone.prixM2,
+        }))
+      )
+    );
+  }, [countries]);
+
   // Interaction: When clicking on sidebar list card
   const handleSelectEstablishment = (establishment: Etablissement) => {
     setSelectedId(establishment.id);
-  };
-
-  // Simulation: Simulated Excel file import
-  const handleExcelImportSimulation = () => {
-    const citiesList = ["Rabat", "Casablanca", "Marrakech"];
-    const chosenCity = citiesList[Math.floor(Math.random() * citiesList.length)];
-    let lat = 34.0045;
-    let lng = -6.8495;
-    let neighborhood = "Agdal";
-
-    if (chosenCity === "Casablanca") {
-      lat = 33.58 + (Math.random() - 0.5) * 0.05;
-      lng = -7.62 + (Math.random() - 0.5) * 0.05;
-      neighborhood = "Maârif";
-    } else if (chosenCity === "Marrakech") {
-      lat = 31.63 + (Math.random() - 0.5) * 0.05;
-      lng = -8.01 + (Math.random() - 0.5) * 0.05;
-      neighborhood = "Guéliz";
-    } else {
-      lat = 34.00 + (Math.random() - 0.5) * 0.05;
-      lng = -6.84 + (Math.random() - 0.5) * 0.05;
-      neighborhood = "Hay Riad";
-    }
-
-    // Corrigé pour ne générer que les catégories valides
-    const categoriesList = ["Clinique Privée", "Ophtalmologie"];
-    const chosenCat = categoriesList[Math.floor(Math.random() * categoriesList.length)];
-
-    const id = `sim-${Date.now()}`;
-    const newRecord: Etablissement = {
-      id,
-      nom: `${chosenCat === "Clinique Privée" ? "Clinique Spécialisée" : "Cabinet d'Ophtalmologie"} Al Shifa (${chosenCity})`,
-      categorie: chosenCat,
-      ville: chosenCity,
-      quartier: neighborhood,
-      adresse: `Boulevard Mohammed V, Secteur ${Math.floor(Math.random() * 20) + 1}, ${neighborhood}, ${chosenCity}`,
-      latitude: Number(lat.toFixed(4)),
-      longitude: Number(lng.toFixed(4)),
-      source: "Import Excel (Simulation)",
-      placeId: `ChIJ${Math.random().toString(36).substring(2, 12)}`,
-      telephone: "+212 537-889900",
-      rating: Number((4.0 + Math.random()).toFixed(1)),
-      reviewsCount: Math.floor(Math.random() * 50) + 10,
-      status: "Ouvert",
-      specialites: ["Consultation d'urgence", "Soins Généraux"]
-    };
-
-    setCustomEtablissements(prev => [newRecord, ...prev]);
-    setToastMessage(`Import réussi : "${newRecord.nom}" ajouté à ${newRecord.ville} !`);
-    setShowImportToast(true);
-    setTimeout(() => setShowImportToast(false), 5000);
-
-    setTimeout(() => {
-      setSelectedId(id);
-    }, 400);
   };
 
   // Simulation: Simulated Excel file export
@@ -184,12 +179,28 @@ export default function App() {
     setTimeout(() => setShowImportToast(false), 4000);
   };
 
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-rose-700 font-bold text-sm">
+        {loadError}
+      </div>
+    );
+  }
+
+  if (isLoading || !selectedCountry || !selectedCity) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-slate-500 font-bold text-sm uppercase tracking-wider">
+        Chargement des données...
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-slate-50 via-blue-50/40 to-slate-100 text-slate-800 font-sans selection:bg-blue-600 selection:text-white pb-12">
-      
+
       {/* LA NOUVELLE BARRE GLOBALE DE SÉLECTION PAYS / VILLE */}
-      <GlobalLocationSelector 
-        countries={AVAILABLE_COUNTRIES}
+      <GlobalLocationSelector
+        countries={countries}
         selectedCountry={selectedCountry}
         selectedCity={selectedCity}
         onCountryChange={setSelectedCountry}
@@ -227,8 +238,8 @@ export default function App() {
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200/50">Royaume du Maroc</span>
-                <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 border border-blue-200/50">Casablanca et Fès</span>
+                <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200/50">{selectedCountry.nom}</span>
+                <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 border border-blue-200/50">{selectedCountry.villes.map((v) => v.nom).join(' et ')}</span>
               </div>
               <h1 className="text-sm md:text-lg font-black text-slate-900 tracking-tight mt-1 uppercase">
                 Plateforme Nationale des Établissements de Santé
@@ -238,16 +249,6 @@ export default function App() {
 
           {/* SaaS Simulation Controls */}
           <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-            <button
-              id="btn-excel-import"
-              onClick={handleExcelImportSimulation}
-              className="flex-1 sm:flex-initial px-4 py-2.5 bg-white hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 text-slate-700 text-xs font-black uppercase tracking-wider rounded-xl border border-slate-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
-              title="Simuler l'intégration d'un fichier Excel"
-            >
-              <Upload className="h-4 w-4 stroke-[2.5]" />
-              <span>Importer</span>
-            </button>
-            
             <button
               id="btn-excel-export"
               onClick={handleExcelExport}
@@ -308,13 +309,15 @@ export default function App() {
               establishments={filteredEstablishments}
               selectedId={selectedId}
               onSelectEstablishment={handleSelectEstablishment}
+              center={[selectedCity.lat, selectedCity.lng]}
+              zoom={selectedCity.zoomBase}
             />
           </div>
         </section>
 
         {/* Advanced Statistical & Distribution Dashboards */}
         <section id="analytics-section">
-          <StatsDashboard establishments={filteredEstablishments} />
+          <StatsDashboard establishments={filteredEstablishments} zones={allZones} />
         </section>
 
         {/* LA NOUVELLE SECTION DE SCORING EST ICI */}
@@ -336,7 +339,7 @@ export default function App() {
             <span>Architecture PostGIS préréglée. Mode actuel : Simulation.</span>
           </div>
           <div>
-            <span>© 2026 Ministère de la Santé - Royaume du Maroc. Tous droits réservés.</span>
+            <span>© 2026 Ministère de la Santé - {selectedCountry.nom}. Tous droits réservés.</span>
           </div>
           <div className="flex items-center gap-1">
             <span>Développé pour la</span>
