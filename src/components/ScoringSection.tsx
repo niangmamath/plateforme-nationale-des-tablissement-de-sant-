@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'motion/react';
 
 // LE GÉNÉRATEUR UNIVERSEL ET SES CONFIGURATIONS (L'ADN)
 import BusinessPlanGenerator from './BusinessPlanGenerator';
-import { ZoneGeo } from '../types';
+import { VilleGeo } from '../types';
 
 interface SpecialitePoids {
   valeur: number;
@@ -61,12 +61,24 @@ const SANTE_DATA_DICTIONARY = [
 type SpecialtyType = 'Dermatologie' | 'Ophtalmologie' | 'Clinique' | null;
 
 interface ScoringSectionProps {
-  villeName?: string;
-  zones?: ZoneGeo[];
+  villes: VilleGeo[];
+  initialVilleId?: string;
   currency?: string;
 }
 
-export default function ScoringSection({ villeName = "Casablanca", zones = [], currency = "DH" }: ScoringSectionProps) {
+export default function ScoringSection({ villes, initialVilleId, currency = "DH" }: ScoringSectionProps) {
+  // Ville active pour cette section : suit la ville sélectionnée globalement quand il y en a une,
+  // sinon repli sur la première ville du pays + sélecteur local pour en choisir une autre ici.
+  const [activeVilleId, setActiveVilleId] = useState<string | undefined>(initialVilleId ?? villes[0]?.id);
+
+  useEffect(() => {
+    setActiveVilleId(initialVilleId ?? villes[0]?.id);
+  }, [initialVilleId, villes]);
+
+  const activeVille = villes.find((v) => v.id === activeVilleId) ?? villes[0];
+  const villeName = activeVille?.nom ?? '';
+  const zones = activeVille?.zones ?? [];
+
   const [selectedSpecialty, setSelectedSpecialty] = useState<SpecialtyType>(null);
   const [selectedAreaForBP, setSelectedAreaForBP] = useState<any | null>(null);
   const [isExpertMode, setIsExpertMode] = useState(false);
@@ -179,6 +191,21 @@ export default function ScoringSection({ villeName = "Casablanca", zones = [], c
         <p className="text-slate-400 text-xs md:text-sm font-medium leading-relaxed">
           Notre algorithme croise la démographie du HCP, le pouvoir d'achat estimé et la saturation concurrentielle.
         </p>
+
+        {villes.length > 1 && (
+          <div className="mt-4 inline-flex items-center gap-2 bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-1.5">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Ville analysée</span>
+            <select
+              value={activeVilleId}
+              onChange={(e) => setActiveVilleId(e.target.value)}
+              className="bg-transparent text-sm font-bold text-blue-300 outline-none cursor-pointer"
+            >
+              {villes.map((v) => (
+                <option key={v.id} value={v.id} className="bg-slate-800 text-white">{v.nom}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">

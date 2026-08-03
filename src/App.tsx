@@ -336,8 +336,8 @@ export default function App() {
         {/* LA NOUVELLE SECTION DE SCORING EST ICI */}
         <section id="scoring-section" className="mt-8">
           <ScoringSection
-            villeName={selectedCity ? selectedCity.nom : selectedCountry.nom}
-            zones={selectedCity ? selectedCity.zones : []}
+            villes={selectedCountry.villes}
+            initialVilleId={selectedCity?.id}
             currency={selectedCountry.devise}
           />
         </section>
