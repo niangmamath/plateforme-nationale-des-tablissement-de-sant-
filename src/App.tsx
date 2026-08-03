@@ -43,7 +43,7 @@ export default function App() {
   useEffect(() => {
     if (countries.length > 0 && !selectedCountry) {
       setSelectedCountry(countries[0]); // Maroc par défaut
-      setSelectedCity(countries[0].villes[0]); // Casablanca par défaut
+      // selectedCity reste null : "toutes les villes" du pays par défaut
     }
   }, [countries, selectedCountry]);
 
@@ -55,10 +55,10 @@ export default function App() {
     source: ''
   });
 
-  // Quand on change de pays, les anciens filtres (ville/quartier) d'un autre pays n'ont plus de sens
+  // Quand on change de pays ou de ville, les anciens filtres (ville/quartier) n'ont plus de sens
   useEffect(() => {
     setFilters((prev) => ({ ...prev, ville: '', quartier: '' }));
-  }, [selectedCountry]);
+  }, [selectedCountry, selectedCity]);
 
   // Track currently highlighted/selected establishment
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -66,13 +66,17 @@ export default function App() {
   const [showImportToast, setShowImportToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
-  // Établissements du pays actuellement sélectionné (via le sélecteur global en haut de page) :
-  // c'est ce périmètre qui alimente tout le reste de la page (annuaire, carte, KPIs, stats).
+  // Établissements du périmètre actuellement sélectionné (via le sélecteur global en haut de page) :
+  // une ville précise si elle est choisie, sinon tout le pays. C'est ce périmètre qui alimente
+  // tout le reste de la page (annuaire, carte, KPIs, stats).
   const scopedEstablishments = useMemo(() => {
     if (!selectedCountry) return [];
+    if (selectedCity) {
+      return baseEstablishments.filter((e) => e.ville === selectedCity.nom);
+    }
     const villesDuPays = new Set(selectedCountry.villes.map((v) => v.nom));
     return baseEstablishments.filter((e) => villesDuPays.has(e.ville));
-  }, [baseEstablishments, selectedCountry]);
+  }, [baseEstablishments, selectedCountry, selectedCity]);
 
   // Compute unique filter options dynamically based on the active dataset
   const uniqueVilles = useMemo(() => {
@@ -129,6 +133,15 @@ export default function App() {
   const kpis = useMemo(() => {
     return computeKpis(filteredEstablishments);
   }, [filteredEstablishments]);
+
+  // Centre approximatif du pays (moyenne des villes) pour recentrer la carte quand
+  // aucune ville précise n'est sélectionnée ("Toutes les villes").
+  const countryCenter = useMemo((): [number, number] => {
+    if (!selectedCountry || selectedCountry.villes.length === 0) return [33.5731, -7.5898];
+    const lat = selectedCountry.villes.reduce((sum, v) => sum + v.lat, 0) / selectedCountry.villes.length;
+    const lng = selectedCountry.villes.reduce((sum, v) => sum + v.lng, 0) / selectedCountry.villes.length;
+    return [lat, lng];
+  }, [selectedCountry]);
 
   // Zones à plat (tous pays confondus) pour l'onglet Démographie de StatsDashboard —
   // remplace l'ancien tableau ARRONDISSEMENTS_DEMO codé en dur (Maroc uniquement).
@@ -187,7 +200,7 @@ export default function App() {
     );
   }
 
-  if (isLoading || !selectedCountry || !selectedCity) {
+  if (isLoading || !selectedCountry) {
     return (
       <div className="min-h-screen flex items-center justify-center text-slate-500 font-bold text-sm uppercase tracking-wider">
         Chargement des données...
@@ -239,7 +252,7 @@ export default function App() {
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200/50">{selectedCountry.nom}</span>
-                <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 border border-blue-200/50">{selectedCountry.villes.map((v) => v.nom).join(' et ')}</span>
+                <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 border border-blue-200/50">{selectedCity ? selectedCity.nom : selectedCountry.villes.map((v) => v.nom).join(' et ')}</span>
               </div>
               <h1 className="text-sm md:text-lg font-black text-slate-900 tracking-tight mt-1 uppercase">
                 Plateforme Nationale des Établissements de Santé
@@ -309,8 +322,8 @@ export default function App() {
               establishments={filteredEstablishments}
               selectedId={selectedId}
               onSelectEstablishment={handleSelectEstablishment}
-              center={[selectedCity.lat, selectedCity.lng]}
-              zoom={selectedCity.zoomBase}
+              center={selectedCity ? [selectedCity.lat, selectedCity.lng] : countryCenter}
+              zoom={selectedCity ? selectedCity.zoomBase : 6}
             />
           </div>
         </section>
@@ -322,9 +335,9 @@ export default function App() {
 
         {/* LA NOUVELLE SECTION DE SCORING EST ICI */}
         <section id="scoring-section" className="mt-8">
-          <ScoringSection 
-            villeName={selectedCity.nom} 
-            zones={selectedCity.zones} 
+          <ScoringSection
+            villeName={selectedCity ? selectedCity.nom : selectedCountry.nom}
+            zones={selectedCity ? selectedCity.zones : []}
             currency={selectedCountry.devise}
           />
         </section>
