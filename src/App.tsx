@@ -337,6 +337,7 @@ export default function App() {
         <section id="scoring-section" className="mt-8">
           <ScoringSection
             villes={selectedCountry.villes}
+            etablissements={baseEstablishments}
             initialVilleId={selectedCity?.id}
             currency={selectedCountry.devise}
           />

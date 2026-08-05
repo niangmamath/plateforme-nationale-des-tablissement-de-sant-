@@ -9,11 +9,15 @@ import { motion, AnimatePresence } from 'motion/react';
 
 // LE GÉNÉRATEUR UNIVERSEL ET SES CONFIGURATIONS (L'ADN)
 import BusinessPlanGenerator from './BusinessPlanGenerator';
-import { VilleGeo } from '../types';
+import { Etablissement, VilleGeo } from '../types';
 
 interface SpecialitePoids {
-  valeur: number;
-  label: string;
+  prix: number;
+  population: number;
+  densite: number;
+  pop1559: number;
+  pop60plus: number;
+  concurrence: number;
 }
 
 interface SpecialiteApi {
@@ -24,7 +28,7 @@ interface SpecialiteApi {
   specialiteNom: string;
   cibleKey: string | null;
   cibleLabel: string | null;
-  poids: SpecialitePoids[];
+  poids: SpecialitePoids;
   fraisPreliminaires: number;
   surfaceDefaut: number;
   bfr: number;
@@ -34,39 +38,36 @@ interface SpecialiteApi {
   actes: { id: number; type: string | null; nom: string; nbrJour: number; prixUnitaire: number }[];
 }
 
-// TON ANCIENNE BASE DE DONNÉES (Conservée comme "Dictionnaire" de statistiques médicales)
-const SANTE_DATA_DICTIONARY = [
-  { nom: "Ben-M'sick", pop15_59: 60.00, pop60_plus: 17.40, dermatos: 3, ophtalmos: 4, acces: 60 },
-  { nom: "Al-Fida", pop15_59: 59.10, pop60_plus: 15.80, dermatos: 4, ophtalmos: 5, acces: 65 },
-  { nom: "Mers Sultan", pop15_59: 58.90, pop60_plus: 13.90, dermatos: 9, ophtalmos: 8, acces: 80 },
-  { nom: "Sidi Othmane", pop15_59: 61.10, pop60_plus: 20.10, dermatos: 2, ophtalmos: 4, acces: 55 },
-  { nom: "Hay Mohammadi", pop15_59: 59.90, pop60_plus: 17.00, dermatos: 3, ophtalmos: 4, acces: 60 },
-  { nom: "Moulay Rachid", pop15_59: 62.20, pop60_plus: 23.40, dermatos: 2, ophtalmos: 3, acces: 50 },
-  { nom: "Sbata", pop15_59: 60.90, pop60_plus: 18.20, dermatos: 2, ophtalmos: 3, acces: 55 },
-  { nom: "Sidi Moumen", pop15_59: 63.30, pop60_plus: 24.80, dermatos: 2, ophtalmos: 4, acces: 65 },
-  { nom: "Roches Noires", pop15_59: 61.60, pop60_plus: 21.50, dermatos: 5, ophtalmos: 6, acces: 75 },
-  { nom: "Sidi Belyout", pop15_59: 59.70, pop60_plus: 16.40, dermatos: 12, ophtalmos: 10, acces: 85 },
-  { nom: "Hay Hassani", pop15_59: 64.30, pop60_plus: 29.60, dermatos: 6, ophtalmos: 8, acces: 75 },
-  { nom: "Sidi Bernoussi", pop15_59: 62.00, pop60_plus: 22.20, dermatos: 3, ophtalmos: 4, acces: 65 },
-  { nom: "Aïn Chock", pop15_59: 63.00, pop60_plus: 23.70, dermatos: 5, ophtalmos: 6, acces: 75 },
-  { nom: "El Maarif", pop15_59: 61.20, pop60_plus: 21.00, dermatos: 18, ophtalmos: 14, acces: 85 },
-  { nom: "Anfa", pop15_59: 58.90, pop60_plus: 14.70, dermatos: 22, ophtalmos: 16, acces: 90 },
-  { nom: "Aïn Sebaâ", pop15_59: 62.50, pop60_plus: 23.50, dermatos: 4, ophtalmos: 5, acces: 70 },
-  { nom: "Agdal", pop15_59: 61.90, pop60_plus: 23.70, dermatos: 8, ophtalmos: 7, acces: 80 },
-  { nom: "Saïss", pop15_59: 60.30, pop60_plus: 14.40, dermatos: 5, ophtalmos: 5, acces: 70 },
-  { nom: "Zouagha", pop15_59: 59.10, pop60_plus: 10.80, dermatos: 1, ophtalmos: 2, acces: 50 },
-  { nom: "Méchouar Fès Jdid", pop15_59: 61.80, pop60_plus: 19.80, dermatos: 2, ophtalmos: 2, acces: 60 }
+type SpecialtyType = 'Dermatologie' | 'Ophtalmologie' | 'Clinique' | null;
+type CritereKey = keyof SpecialitePoids;
+
+// 5 critères communs à toutes les spécialités — mêmes curseurs pour tout le monde,
+// seuls les poids de départ (venus de la base) diffèrent selon la spécialité.
+const CRITERES: { key: CritereKey; label: string }[] = [
+  { key: 'prix', label: "Pouvoir d'achat (Prix/m²)" },
+  { key: 'population', label: 'Population totale' },
+  { key: 'densite', label: 'Densité de population' },
+  { key: 'pop1559', label: 'Population active (15-59 ans)' },
+  { key: 'pop60plus', label: 'Population sénior (60+ ans)' },
+  { key: 'concurrence', label: 'Faible concurrence' },
 ];
 
-type SpecialtyType = 'Dermatologie' | 'Ophtalmologie' | 'Clinique' | null;
+// Catégorie réelle (etablissements.categorie) correspondant à chaque spécialité, pour
+// compter la vraie concurrence à partir des établissements publiés — pas de données fictives.
+const CATEGORIE_PAR_SPECIALITE: Record<Exclude<SpecialtyType, null>, string> = {
+  Dermatologie: 'Dermatologue',
+  Ophtalmologie: 'Ophtalmologie',
+  Clinique: 'Clinique Privée',
+};
 
 interface ScoringSectionProps {
   villes: VilleGeo[];
+  etablissements: Etablissement[];
   initialVilleId?: string;
   currency?: string;
 }
 
-export default function ScoringSection({ villes, initialVilleId, currency = "DH" }: ScoringSectionProps) {
+export default function ScoringSection({ villes, etablissements, initialVilleId, currency = "DH" }: ScoringSectionProps) {
   // Ville active pour cette section : suit la ville sélectionnée globalement quand il y en a une,
   // sinon repli sur la première ville du pays + sélecteur local pour en choisir une autre ici.
   const [activeVilleId, setActiveVilleId] = useState<string | undefined>(initialVilleId ?? villes[0]?.id);
@@ -83,7 +84,7 @@ export default function ScoringSection({ villes, initialVilleId, currency = "DH"
   const [selectedAreaForBP, setSelectedAreaForBP] = useState<any | null>(null);
   const [isExpertMode, setIsExpertMode] = useState(false);
 
-  const [weights, setWeights] = useState({ w1: 50, w2: 30, w3: 20 });
+  const [weights, setWeights] = useState<SpecialitePoids>({ prix: 17, population: 17, densite: 17, pop1559: 16, pop60plus: 17, concurrence: 16 });
 
   // Config des spécialités (poids de scoring + templates de business plan) chargée depuis Postgres
   const [specialites, setSpecialites] = useState<SpecialiteApi[]>([]);
@@ -100,26 +101,33 @@ export default function ScoringSection({ villes, initialVilleId, currency = "DH"
     setIsExpertMode(false);
 
     const found = specialites.find((s) => s.id === spec);
-    if (found) {
-      setWeights({ w1: found.poids[0].valeur, w2: found.poids[1].valeur, w3: found.poids[2].valeur });
-    }
+    if (found) setWeights(found.poids);
   };
+
+  // Concurrence réelle : nombre d'établissements publiés de cette spécialité, par zone —
+  // remplace l'ancien dictionnaire de chiffres fictifs codés en dur.
+  const concurrenceParZone = useMemo(() => {
+    if (!selectedSpecialty) return {} as Record<string, number>;
+    const categorie = CATEGORIE_PAR_SPECIALITE[selectedSpecialty];
+    const counts: Record<string, number> = {};
+    for (const e of etablissements) {
+      if (e.categorie !== categorie || e.ville !== villeName || !e.arrondissement) continue;
+      counts[e.arrondissement] = (counts[e.arrondissement] ?? 0) + 1;
+    }
+    return counts;
+  }, [etablissements, selectedSpecialty, villeName]);
 
   const rankedAreas = useMemo(() => {
     if (!selectedSpecialty || !zones || zones.length === 0) return [];
 
-    const enrichedZones = zones.map(zone => {
-      const stats = SANTE_DATA_DICTIONARY.find(s => s.nom === zone.nom);
-      return {
-        ...zone,
-        ville: villeName,
-        pop15_59: stats?.pop15_59 || 60,
-        pop60_plus: stats?.pop60_plus || 15,
-        dermatos: stats?.dermatos || Math.max(1, Math.round(zone.population / 40000)),
-        ophtalmos: stats?.ophtalmos || Math.max(1, Math.round(zone.population / 35000)),
-        acces: stats?.acces || 65
-      };
-    });
+    const enrichedZones = zones.map(zone => ({
+      ...zone,
+      ville: villeName,
+      pop1559: zone.pop15_59 ?? 60,
+      pop60plus: zone.pop60_plus ?? 15,
+      densiteVal: zone.densite ?? 0,
+      concurrenceCount: concurrenceParZone[zone.nom] ?? 0,
+    }));
 
     const getMinMax = (key: keyof typeof enrichedZones[0]) => {
       const vals = enrichedZones.map(a => Number(a[key]) || 0);
@@ -127,56 +135,41 @@ export default function ScoringSection({ villes, initialVilleId, currency = "DH"
     };
 
     const mmPrix = getMinMax('prixM2');
-    const mmPop1559 = getMinMax('pop15_59');
-    const mmPop60 = getMinMax('pop60_plus');
+    const mmPop1559 = getMinMax('pop1559');
+    const mmPop60plus = getMinMax('pop60plus');
     const mmPop = getMinMax('population');
-    const mmAcces = getMinMax('acces');
+    const mmDensite = getMinMax('densiteVal');
+    const mmConcurrence = getMinMax('concurrenceCount');
 
     const normalize = (val: number, min: number, max: number) => {
-      if (max === min) return 50; 
+      if (max === min) return 50;
       return ((val - min) / (max - min)) * 100;
     };
 
-    const totalW = weights.w1 + weights.w2 + weights.w3 || 1;
-    const p1 = weights.w1 / totalW;
-    const p2 = weights.w2 / totalW;
-    const p3 = weights.w3 / totalW;
+    const totalW = weights.prix + weights.population + weights.densite + weights.pop1559 + weights.pop60plus + weights.concurrence || 1;
+    const pPrix = weights.prix / totalW;
+    const pPop = weights.population / totalW;
+    const pDensite = weights.densite / totalW;
+    const pPop1559 = weights.pop1559 / totalW;
+    const pPop60plus = weights.pop60plus / totalW;
+    const pConcurrence = weights.concurrence / totalW;
 
     return enrichedZones.map(arr => {
-      let score = 0;
-
       const normPrix = normalize(arr.prixM2, mmPrix.min, mmPrix.max);
-      const normPop1559 = normalize(arr.pop15_59, mmPop1559.min, mmPop1559.max);
-      const normPop60 = normalize(arr.pop60_plus, mmPop60.min, mmPop60.max);
+      const normPop1559 = normalize(arr.pop1559, mmPop1559.min, mmPop1559.max);
+      const normPop60plus = normalize(arr.pop60plus, mmPop60plus.min, mmPop60plus.max);
       const normPop = normalize(arr.population, mmPop.min, mmPop.max);
-      const normAcces = normalize(arr.acces, mmAcces.min, mmAcces.max);
+      const normDensite = normalize(arr.densiteVal, mmDensite.min, mmDensite.max);
+      // Moins de concurrents dans la zone -> meilleur score (inversé).
+      const normConcurrence = 100 - normalize(arr.concurrenceCount, mmConcurrence.min, mmConcurrence.max);
 
-      if (selectedSpecialty === 'Dermatologie') {
-        const densiteDerm = (arr.dermatos / arr.population) * 100000;
-        const normConcurrence = Math.max(0, 100 - (densiteDerm * 5)); 
-        score = (normPrix * p1) + (normPop1559 * p2) + (normConcurrence * p3);
-      } 
-      else if (selectedSpecialty === 'Ophtalmologie') {
-        const densiteOpht = (arr.ophtalmos / arr.population) * 100000;
-        const normConcurrence = Math.max(0, 100 - (densiteOpht * 5));
-        const prixMoyenOptimise = 100 - Math.abs(normPrix - 50) * 2; 
-        score = (normPop60 * p1) + (normConcurrence * p2) + (Math.max(0, prixMoyenOptimise) * p3);
-      }
-      else if (selectedSpecialty === 'Clinique') {
-        const scorePrixInverse = 100 - normPrix;
-        score = (normPop * p1) + (normAcces * p2) + (scorePrixInverse * p3);
-      }
+      const score = (normPrix * pPrix) + (normPop * pPop) + (normDensite * pDensite) + (normPop1559 * pPop1559) + (normPop60plus * pPop60plus) + (normConcurrence * pConcurrence);
 
       return { ...arr, finalScore: Math.round(score) };
     }).sort((a, b) => b.finalScore - a.finalScore).slice(0, 10);
-  }, [selectedSpecialty, weights, zones, villeName]);
+  }, [selectedSpecialty, weights, zones, villeName, concurrenceParZone]);
 
-  const getLabels = () => {
-    const found = specialites.find((s) => s.id === selectedSpecialty);
-    return found ? found.poids.map((p) => p.label) : ['', '', ''];
-  };
-
-  const totalW = weights.w1 + weights.w2 + weights.w3 || 1;
+  const totalW = weights.prix + weights.population + weights.densite + weights.pop1559 + weights.pop60plus + weights.concurrence || 1;
 
   // SÉLECTION DYNAMIQUE DE LA CONFIGURATION (L'ADN DU BUSINESS PLAN), chargée depuis Postgres
   const getActiveConfig = () => specialites.find((s) => s.id === selectedSpecialty) || null;
@@ -247,10 +240,8 @@ export default function ScoringSection({ villes, initialVilleId, currency = "DH"
             <AnimatePresence>
               {isExpertMode && (
                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mb-8 overflow-hidden">
-                  <div className="p-5 border border-blue-500/30 bg-blue-900/10 rounded-xl grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {[1, 2, 3].map((num) => {
-                      const key = `w${num}` as keyof typeof weights;
-                      const label = getLabels()[num - 1];
+                  <div className="p-5 border border-blue-500/30 bg-blue-900/10 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {CRITERES.map(({ key, label }) => {
                       const realPercentage = Math.round((weights[key] / totalW) * 100);
                       return (
                         <div key={key}>
@@ -258,7 +249,7 @@ export default function ScoringSection({ villes, initialVilleId, currency = "DH"
                             <label className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">{label}</label>
                             <span className="text-sm font-black text-blue-400">{realPercentage}%</span>
                           </div>
-                          <input type="range" min="0" max="100" value={weights[key]} onChange={(e) => setWeights({...weights, [key]: parseInt(e.target.value)})} className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500" />
+                          <input type="range" min="0" max="100" value={weights[key]} onChange={(e) => setWeights({ ...weights, [key]: parseInt(e.target.value) })} className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500" />
                         </div>
                       );
                     })}

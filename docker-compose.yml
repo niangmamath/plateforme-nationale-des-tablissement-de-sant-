@@ -24,8 +24,14 @@ services:
       KEY: ${DIRECTUS_KEY}
       SECRET: ${DIRECTUS_SECRET}
       DB_CLIENT: pg
-      # Pointe sur Supabase (pooler en mode session, adapté à un pool de connexions persistant comme Directus)
-      DB_CONNECTION_STRING: ${SUPABASE_DATABASE_URL_SESSION}
+      # Phase de test local de l'automatisation : pointe sur la base locale (service "db" du même
+      # docker-compose), pas sur Supabase. Le Directus déployé sur Render, lui, garde sa propre
+      # config pointée sur Supabase (définie directement dans son dashboard, pas ici) — inchangé.
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_DATABASE: ${POSTGRES_DB:-medimplant}
+      DB_USER: ${POSTGRES_USER:-medimplant}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-medimplant}
       ADMIN_EMAIL: ${DIRECTUS_ADMIN_EMAIL:-admin@medimplant.local}
       ADMIN_PASSWORD: ${DIRECTUS_ADMIN_PASSWORD:-medimplant}
     volumes:
