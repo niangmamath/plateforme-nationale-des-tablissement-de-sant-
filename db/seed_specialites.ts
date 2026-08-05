@@ -88,6 +88,14 @@ async function main() {
       }
     }
 
+    // Données de référence, pas du contenu à valider manuellement (statut par défaut
+    // "brouillon" depuis la migration 009) : on publie directement, comme le fait seed.ts.
+    await client.query("UPDATE specialites SET statut = 'publie'");
+    await client.query("UPDATE specialite_amenagements SET statut = 'publie'");
+    await client.query("UPDATE specialite_effectifs SET statut = 'publie'");
+    await client.query("UPDATE specialite_machines SET statut = 'publie'");
+    await client.query("UPDATE specialite_actes SET statut = 'publie'");
+
     await client.query('COMMIT');
     console.log(`Seed spécialités OK : ${SPECIALITES.length} spécialités.`);
   } catch (err) {

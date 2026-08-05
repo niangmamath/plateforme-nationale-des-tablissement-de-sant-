@@ -45,6 +45,13 @@ async function main() {
       );
     }
 
+    // Données de référence, pas du contenu à valider manuellement (statut par défaut
+    // "brouillon" depuis la migration 009) : on publie directement.
+    await client.query("UPDATE pays SET statut = 'publie'");
+    await client.query("UPDATE villes SET statut = 'publie'");
+    await client.query("UPDATE zones SET statut = 'publie'");
+    await client.query("UPDATE etablissements SET statut = 'publie'");
+
     await client.query('COMMIT');
     console.log(`Seed OK : ${AVAILABLE_COUNTRIES.length} pays, ${ESTABLISHMENTS_DATA.length} établissements.`);
   } catch (err) {
