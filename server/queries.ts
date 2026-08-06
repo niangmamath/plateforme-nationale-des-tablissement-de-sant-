@@ -68,6 +68,8 @@ export async function getSpecialites(pool: Pool) {
     id: s.id,
     nom: s.nom,
     couleur: s.couleur,
+    icone: s.icone,
+    categorieEtablissement: s.categorie_etablissement,
     titre: s.titre_business_plan,
     specialiteNom: s.specialite_nom_bp,
     cibleKey: s.cible_key,

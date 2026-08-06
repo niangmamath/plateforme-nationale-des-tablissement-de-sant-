@@ -2,6 +2,7 @@ import { Pool } from 'pg';
 
 interface SpecialiteExtractionConfig {
   requete: string;
+  variantes: string[];
   inclus: string[];
   exclus: string[];
   typesRequis: string[];
@@ -66,14 +67,17 @@ async function chargerZonesParVille(pool: Pool): Promise<Record<string, ZoneCent
   return parVille;
 }
 
+// La config d'extraction vit directement dans specialites (categorie_etablissement = la valeur
+// que l'admin tape/choisit et qui devient etablissements.categorie) — une seule table, un seul
+// statut à publier pour activer à la fois le scoring et l'extraction.
 async function chargerConfigSpecialite(pool: Pool, specialite: string): Promise<SpecialiteExtractionConfig | null> {
   const { rows } = await pool.query(
-    'SELECT requete, mots_inclus, mots_exclus, types_google FROM specialite_extraction WHERE id = $1',
+    "SELECT requete, variantes, mots_inclus, mots_exclus, types_google FROM specialites WHERE categorie_etablissement = $1 AND statut = 'publie'",
     [specialite]
   );
   if (rows.length === 0) return null;
   const r = rows[0];
-  return { requete: r.requete, inclus: r.mots_inclus, exclus: r.mots_exclus, typesRequis: r.types_google };
+  return { requete: r.requete, variantes: r.variantes ?? [], inclus: r.mots_inclus, exclus: r.mots_exclus, typesRequis: r.types_google };
 }
 
 async function chargerPlaceIdsExistants(pool: Pool): Promise<Set<string>> {
@@ -127,6 +131,64 @@ async function rechercherGooglePlaces(query: string, apiKey: string): Promise<Go
   return results;
 }
 
+async function rechercherNearbyPlaces(lat: number, lng: number, radius: number, type: string, keyword: string, apiKey: string): Promise<GooglePlaceResult[]> {
+  const results: GooglePlaceResult[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const url = new URL('https://maps.googleapis.com/maps/api/place/nearbysearch/json');
+    url.searchParams.set('location', `${lat},${lng}`);
+    url.searchParams.set('radius', String(radius));
+    url.searchParams.set('type', type);
+    url.searchParams.set('keyword', keyword);
+    url.searchParams.set('key', apiKey);
+    if (pageToken) url.searchParams.set('pagetoken', pageToken);
+
+    const res = await fetch(url);
+    const data: any = await res.json();
+    results.push(...(data.results ?? []));
+
+    pageToken = data.next_page_token;
+    if (pageToken) await new Promise((r) => setTimeout(r, 2000));
+  } while (pageToken);
+
+  return results;
+}
+
+function distanceMetres(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const rad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * rad;
+  const dLng = (lng2 - lng1) * rad;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Centre + rayon de la ville pour le Nearby Search complémentaire : le rayon est déduit de la
+// distance entre le centre de la ville et sa zone la plus éloignée (+ 20% de marge), plutôt
+// qu'une valeur fixe qui serait trop petite pour une grande ville ou trop grande pour une petite.
+async function centreEtRayonVille(pool: Pool, pays: string, ville: string): Promise<{ lat: number; lng: number; rayon: number } | null> {
+  const { rows } = await pool.query(
+    `SELECT v.lat, v.lng FROM villes v JOIN pays p ON p.id = v.pays_id WHERE v.nom = $1 AND p.nom = $2`,
+    [ville, pays]
+  );
+  if (rows.length === 0) return null;
+  const lat = Number(rows[0].lat);
+  const lng = Number(rows[0].lng);
+
+  const { rows: zoneRows } = await pool.query(
+    `SELECT z.lat, z.lng FROM zones z
+     JOIN villes v ON v.id = z.ville_id JOIN pays p ON p.id = v.pays_id
+     WHERE v.nom = $1 AND p.nom = $2 AND z.statut = 'publie'`,
+    [ville, pays]
+  );
+  const distances = zoneRows.map((z) => distanceMetres(lat, lng, Number(z.lat), Number(z.lng)));
+  const distanceMax = distances.length > 0 ? Math.max(...distances) : 5000;
+  const rayon = Math.min(Math.max(Math.round(distanceMax * 1.2), 5000), 20000);
+
+  return { lat, lng, rayon };
+}
+
 export async function extraireEtInserer(
   pool: Pool,
   specialite: string,
@@ -145,8 +207,8 @@ export async function extraireEtInserer(
 
   if (!config) {
     throw new Error(
-      `Spécialité inconnue : "${specialite}". Ajoutez-la d'abord dans Directus (collection "Spécialités — extraction") ` +
-      `avec sa requête de recherche et ses mots-clés inclus/exclus, puis relancez l'extraction.`
+      `Spécialité inconnue ou non publiée : "${specialite}". Vérifiez dans Directus (collection Spécialités) qu'une spécialité a bien ` +
+      `ce "categorie_etablissement", une requête de recherche renseignée, et le statut "publié", puis relancez l'extraction.`
     );
   }
 
@@ -157,8 +219,24 @@ export async function extraireEtInserer(
     );
   }
 
-  const query = `${config.requete} ${ville}, ${pays}`;
-  const placesResults = await rechercherGooglePlaces(query, apiKey);
+  // Plusieurs formulations de la requête (synonymes) + une recherche Nearby Search
+  // complémentaire (type + mot-clé, pas une grille) : chaque formulation a son propre
+  // classement de pertinence Google, donc des synonymes font ressortir des fiches différentes.
+  // Gain mesuré empiriquement : +13% à +175% de résultats selon les cas, voir conversation.
+  const requetes = [config.requete, ...config.variantes];
+  const lotsResultats = await Promise.all(requetes.map((r) => rechercherGooglePlaces(`${r} ${ville}, ${pays}`, apiKey)));
+
+  const centre = await centreEtRayonVille(pool, pays, ville);
+  if (centre) {
+    const nearbyResults = await rechercherNearbyPlaces(centre.lat, centre.lng, centre.rayon, config.typesRequis[0], config.requete, apiKey);
+    lotsResultats.push(nearbyResults);
+  }
+
+  const placesUniques = new Map<string, GooglePlaceResult>();
+  for (const lot of lotsResultats) {
+    for (const place of lot) placesUniques.set(place.place_id, place);
+  }
+  const placesResults = [...placesUniques.values()];
 
   const candidats: ExtractionResultItem[] = [];
   for (const place of placesResults) {

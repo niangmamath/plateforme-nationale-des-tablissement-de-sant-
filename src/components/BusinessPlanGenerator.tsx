@@ -46,7 +46,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
   if (!isOpen || !area || !config) return null;
 
   // --- LOGIQUE D'AJOUT ET MODIFICATION ---
-  const handleUpdateAmenagement = (id: number, newPrix: number) => setAmenagements(amenagements.map(a => a.id === id ? { ...a, prix: newPrix } : a));
+  const handleUpdateAmenagement = (id: number, field: 'nom' | 'prix', value: string | number) => setAmenagements(amenagements.map(a => a.id === id ? { ...a, [field]: value } : a));
   const handleRemoveAmenagement = (id: number) => setAmenagements(amenagements.filter(a => a.id !== id));
   const handleAddAmenagement = () => {
     if (newAmenagementNom && newAmenagementPrix) {
@@ -55,7 +55,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
     }
   };
 
-  const handleUpdateEffectif = (id: number, field: 'qte' | 'salaire', value: number) => setEffectifs(effectifs.map(e => e.id === id ? { ...e, [field]: value } : e));
+  const handleUpdateEffectif = (id: number, field: 'nom' | 'qte' | 'salaire', value: string | number) => setEffectifs(effectifs.map(e => e.id === id ? { ...e, [field]: value } : e));
   const handleRemoveEffectif = (id: number) => setEffectifs(effectifs.filter(e => e.id !== id));
   const handleAddEffectif = () => {
     if (newEffectifNom && newEffectifQte && newEffectifSalaire) {
@@ -64,7 +64,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
     }
   };
 
-  const handleUpdateMachinePrice = (id: number, newPrix: number) => setMachines(machines.map(m => m.id === id ? { ...m, prix: newPrix } : m));
+  const handleUpdateMachine = (id: number, field: 'nom' | 'prix', value: string | number) => setMachines(machines.map(m => m.id === id ? { ...m, [field]: value } : m));
   const handleRemoveMachine = (id: number) => setMachines(machines.filter(m => m.id !== id));
   const handleAddMachine = () => {
     if (newMachineNom && newMachinePrix) {
@@ -73,7 +73,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
     }
   };
 
-  const handleUpdateActe = (id: number, field: 'nbrJour' | 'prixUnitaire', value: number) => setActes(actes.map(a => a.id === id ? { ...a, [field]: value } : a));
+  const handleUpdateActe = (id: number, field: 'nom' | 'nbrJour' | 'prixUnitaire', value: string | number) => setActes(actes.map(a => a.id === id ? { ...a, [field]: value } : a));
 
   // --- CALCULS MATHÉMATIQUES GLOBAUX ---
   const baseAmenagementHT = amenagements.reduce((acc, curr) => acc + curr.prix, 0);
@@ -160,8 +160,8 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
                 <tbody>
                   {amenagements.map(a => (
                     <tr key={a.id} className="hover:bg-slate-50">
-                      <td className="border border-slate-300 p-2 font-medium">{a.nom}</td>
-                      <td className="border border-slate-300 p-2"><input type="number" value={a.prix} onChange={(e) => handleUpdateAmenagement(a.id, parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-right font-bold text-slate-800 outline-none print:border-none appearance-none" /></td>
+                      <td className="border border-slate-300 p-2"><input type="text" value={a.nom} onChange={(e) => handleUpdateAmenagement(a.id, 'nom', e.target.value)} className="w-full bg-transparent font-medium outline-none print:border-none" /></td>
+                      <td className="border border-slate-300 p-2"><input type="number" value={a.prix} onChange={(e) => handleUpdateAmenagement(a.id, 'prix', parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-right font-bold text-slate-800 outline-none print:border-none appearance-none" /></td>
                       <td className="border border-slate-300 p-1 text-center print:hidden"><button onClick={() => handleRemoveAmenagement(a.id)} className="text-rose-500"><Trash2 className="h-4 w-4 mx-auto" /></button></td>
                     </tr>
                   ))}
@@ -186,7 +186,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
                 <tbody>
                   {effectifs.map(e => (
                     <tr key={e.id} className="hover:bg-slate-50">
-                      <td className="border p-2 font-medium">{e.nom}</td>
+                      <td className="border p-2"><input type="text" value={e.nom} onChange={(evt) => handleUpdateEffectif(e.id, 'nom', evt.target.value)} className="w-full bg-transparent font-medium outline-none print:border-none" /></td>
                       <td className="border p-2"><input type="number" value={e.qte} onChange={(evt) => handleUpdateEffectif(e.id, 'qte', parseFloat(evt.target.value) || 0)} className="w-full text-center font-bold outline-none print:border-none" /></td>
                       <td className="border p-2"><input type="number" value={e.salaire} onChange={(evt) => handleUpdateEffectif(e.id, 'salaire', parseFloat(evt.target.value) || 0)} className="w-full text-right font-bold outline-none print:border-none" /></td>
                       <td className="border p-1 text-center print:hidden"><button onClick={() => handleRemoveEffectif(e.id)} className="text-rose-500"><Trash2 className="h-4 w-4 mx-auto" /></button></td>
@@ -212,8 +212,8 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
               <tbody>
                 {machines.map(m => (
                   <tr key={m.id} className="hover:bg-slate-50">
-                    <td className="border p-3 font-medium text-slate-800">{m.nom}</td>
-                    <td className="border p-2"><input type="number" value={m.prix} onChange={(e) => handleUpdateMachinePrice(m.id, parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-right font-bold outline-none print:border-none appearance-none" /></td>
+                    <td className="border p-2"><input type="text" value={m.nom} onChange={(e) => handleUpdateMachine(m.id, 'nom', e.target.value)} className="w-full bg-transparent font-medium text-slate-800 outline-none print:border-none" /></td>
+                    <td className="border p-2"><input type="number" value={m.prix} onChange={(e) => handleUpdateMachine(m.id, 'prix', parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-right font-bold outline-none print:border-none appearance-none" /></td>
                     <td className="border p-2 text-center print:hidden"><button onClick={() => handleRemoveMachine(m.id)} className="text-rose-500"><Trash2 className="h-4 w-4 mx-auto" /></button></td>
                   </tr>
                 ))}
@@ -235,7 +235,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
               <tbody>
                 {actes.map(acte => (
                   <tr key={acte.id} className="hover:bg-slate-50">
-                    <td className="border p-3 font-medium text-slate-700">{acte.nom}</td>
+                    <td className="border p-2"><input type="text" value={acte.nom} onChange={(e) => handleUpdateActe(acte.id, 'nom', e.target.value)} className="w-full bg-transparent font-medium text-slate-700 outline-none print:border-none" /></td>
                     <td className="border p-2"><input type="number" value={acte.nbrJour} onChange={(e) => handleUpdateActe(acte.id, 'nbrJour', parseFloat(e.target.value) || 0)} className="w-full text-center font-bold outline-none border-b border-dashed focus:border-blue-500 print:border-none text-blue-700" /></td>
                     <td className="border p-2"><input type="number" value={acte.prixUnitaire} onChange={(e) => handleUpdateActe(acte.id, 'prixUnitaire', parseFloat(e.target.value) || 0)} className="w-full text-center font-bold outline-none border-b border-dashed focus:border-blue-500 print:border-none" /></td>
                     <td className="border p-3 text-right font-bold text-slate-900">{formatHT(acte.nbrJour * acte.prixUnitaire)}</td>

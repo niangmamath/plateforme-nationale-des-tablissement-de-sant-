@@ -1,0 +1,6 @@
+{
+  "functions": {
+    "api/admin/extraction.ts": { "maxDuration": 60 },
+    "api/admin/extraction-zone.ts": { "maxDuration": 60 }
+  }
+}

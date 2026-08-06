@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Target, Info, Stethoscope, Eye, Building2, TrendingUp, SlidersHorizontal } from 'lucide-react';
+import { Target, Info, Stethoscope, Eye, Building2, HeartPulse, Brain, Activity, Bone, Syringe, Microscope, TrendingUp, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 // LE GÉNÉRATEUR UNIVERSEL ET SES CONFIGURATIONS (L'ADN)
@@ -24,6 +24,8 @@ interface SpecialiteApi {
   id: string;
   nom: string;
   couleur: string;
+  icone: string;
+  categorieEtablissement: string;
   titre: string;
   specialiteNom: string;
   cibleKey: string | null;
@@ -38,10 +40,9 @@ interface SpecialiteApi {
   actes: { id: number; type: string | null; nom: string; nbrJour: number; prixUnitaire: number }[];
 }
 
-type SpecialtyType = 'Dermatologie' | 'Ophtalmologie' | 'Clinique' | null;
 type CritereKey = keyof SpecialitePoids;
 
-// 5 critères communs à toutes les spécialités — mêmes curseurs pour tout le monde,
+// 6 critères communs à toutes les spécialités — mêmes curseurs pour tout le monde,
 // seuls les poids de départ (venus de la base) diffèrent selon la spécialité.
 const CRITERES: { key: CritereKey; label: string }[] = [
   { key: 'prix', label: "Pouvoir d'achat (Prix/m²)" },
@@ -52,12 +53,20 @@ const CRITERES: { key: CritereKey; label: string }[] = [
   { key: 'concurrence', label: 'Faible concurrence' },
 ];
 
-// Catégorie réelle (etablissements.categorie) correspondant à chaque spécialité, pour
-// compter la vraie concurrence à partir des établissements publiés — pas de données fictives.
-const CATEGORIE_PAR_SPECIALITE: Record<Exclude<SpecialtyType, null>, string> = {
-  Dermatologie: 'Dermatologue',
-  Ophtalmologie: 'Ophtalmologie',
-  Clinique: 'Clinique Privée',
+// Icônes disponibles pour une spécialité, choisies dans Directus (champ "icone") — liste fermée
+// pour rester simple ; à défaut d'une correspondance, on retombe sur Stethoscope.
+const ICONES: Record<string, LucideIcon> = { Stethoscope, Eye, Building2, HeartPulse, Brain, Activity, Bone, Syringe, Microscope };
+
+// Classes Tailwind complètes par couleur (valeur du champ "couleur" en base) — écrites en
+// toutes lettres ici pour que Tailwind les détecte à la compilation, même si le choix se fait
+// dynamiquement à l'exécution. Ajouter une couleur ici si une nouvelle spécialité en a besoin.
+const COULEURS: Record<string, { actif: string; icone: string }> = {
+  blue: { actif: 'bg-blue-600/20 border-blue-500', icone: 'text-blue-400' },
+  emerald: { actif: 'bg-emerald-600/20 border-emerald-500', icone: 'text-emerald-400' },
+  purple: { actif: 'bg-purple-600/20 border-purple-500', icone: 'text-purple-400' },
+  rose: { actif: 'bg-rose-600/20 border-rose-500', icone: 'text-rose-400' },
+  amber: { actif: 'bg-amber-600/20 border-amber-500', icone: 'text-amber-400' },
+  cyan: { actif: 'bg-cyan-600/20 border-cyan-500', icone: 'text-cyan-400' },
 };
 
 interface ScoringSectionProps {
@@ -80,7 +89,7 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
   const villeName = activeVille?.nom ?? '';
   const zones = activeVille?.zones ?? [];
 
-  const [selectedSpecialty, setSelectedSpecialty] = useState<SpecialtyType>(null);
+  const [selectedSpecialty, setSelectedSpecialty] = useState<string | null>(null);
   const [selectedAreaForBP, setSelectedAreaForBP] = useState<any | null>(null);
   const [isExpertMode, setIsExpertMode] = useState(false);
 
@@ -96,7 +105,7 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
       .catch(() => setSpecialites([]));
   }, []);
 
-  const handleSelectSpecialty = (spec: SpecialtyType) => {
+  const handleSelectSpecialty = (spec: string) => {
     setSelectedSpecialty(spec);
     setIsExpertMode(false);
 
@@ -105,17 +114,18 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
   };
 
   // Concurrence réelle : nombre d'établissements publiés de cette spécialité, par zone —
-  // remplace l'ancien dictionnaire de chiffres fictifs codés en dur.
+  // la catégorie etablissements correspondante vient de la base (categorieEtablissement),
+  // pas d'une correspondance codée en dur.
   const concurrenceParZone = useMemo(() => {
-    if (!selectedSpecialty) return {} as Record<string, number>;
-    const categorie = CATEGORIE_PAR_SPECIALITE[selectedSpecialty];
+    const categorie = specialites.find((s) => s.id === selectedSpecialty)?.categorieEtablissement;
+    if (!categorie) return {} as Record<string, number>;
     const counts: Record<string, number> = {};
     for (const e of etablissements) {
       if (e.categorie !== categorie || e.ville !== villeName || !e.arrondissement) continue;
       counts[e.arrondissement] = (counts[e.arrondissement] ?? 0) + 1;
     }
     return counts;
-  }, [etablissements, selectedSpecialty, villeName]);
+  }, [etablissements, selectedSpecialty, specialites, villeName]);
 
   const rankedAreas = useMemo(() => {
     if (!selectedSpecialty || !zones || zones.length === 0) return [];
@@ -201,21 +211,18 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <button onClick={() => handleSelectSpecialty('Dermatologie')} className={`flex flex-col items-center p-5 md:p-6 rounded-2xl border-2 transition-all ${selectedSpecialty === 'Dermatologie' ? 'bg-blue-600/20 border-blue-500' : 'bg-slate-800/50 border-slate-700 hover:border-slate-500'}`}>
-          <Stethoscope className={`h-7 w-7 md:h-8 md:w-8 mb-3 ${selectedSpecialty === 'Dermatologie' ? 'text-blue-400' : 'text-slate-400'}`} />
-          <span className="font-bold text-xs md:text-sm uppercase tracking-wider">Dermatologie</span>
-        </button>
-
-        <button onClick={() => handleSelectSpecialty('Ophtalmologie')} className={`flex flex-col items-center p-5 md:p-6 rounded-2xl border-2 transition-all ${selectedSpecialty === 'Ophtalmologie' ? 'bg-emerald-600/20 border-emerald-500' : 'bg-slate-800/50 border-slate-700 hover:border-slate-500'}`}>
-          <Eye className={`h-7 w-7 md:h-8 md:w-8 mb-3 ${selectedSpecialty === 'Ophtalmologie' ? 'text-emerald-400' : 'text-slate-400'}`} />
-          <span className="font-bold text-xs md:text-sm uppercase tracking-wider">Ophtalmologie</span>
-        </button>
-
-        <button onClick={() => handleSelectSpecialty('Clinique')} className={`flex flex-col items-center p-5 md:p-6 rounded-2xl border-2 transition-all ${selectedSpecialty === 'Clinique' ? 'bg-purple-600/20 border-purple-500' : 'bg-slate-800/50 border-slate-700 hover:border-slate-500'}`}>
-          <Building2 className={`h-7 w-7 md:h-8 md:w-8 mb-3 ${selectedSpecialty === 'Clinique' ? 'text-purple-400' : 'text-slate-400'}`} />
-          <span className="font-bold text-xs md:text-sm uppercase tracking-wider">Clinique Privée</span>
-        </button>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
+        {specialites.map((s) => {
+          const Icone = ICONES[s.icone] ?? Stethoscope;
+          const couleurs = COULEURS[s.couleur] ?? COULEURS.blue;
+          const actif = selectedSpecialty === s.id;
+          return (
+            <button key={s.id} onClick={() => handleSelectSpecialty(s.id)} className={`flex flex-col items-center p-5 md:p-6 rounded-2xl border-2 transition-all ${actif ? couleurs.actif : 'bg-slate-800/50 border-slate-700 hover:border-slate-500'}`}>
+              <Icone className={`h-7 w-7 md:h-8 md:w-8 mb-3 ${actif ? couleurs.icone : 'text-slate-400'}`} />
+              <span className="font-bold text-xs md:text-sm uppercase tracking-wider">{s.nom}</span>
+            </button>
+          );
+        })}
       </div>
 
       <AnimatePresence mode="wait">

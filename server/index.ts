@@ -3,6 +3,7 @@ import express from 'express';
 import { pool } from './db';
 import { getEtablissements, getPays, getSpecialites } from './queries';
 import { extraireEtInserer } from './extraction';
+import { extraireEtInsererZone } from './demographie';
 
 const app = express();
 const PORT = process.env.API_PORT || 4000;
@@ -32,6 +33,24 @@ app.post('/api/admin/extraction', async (req, res) => {
 
   try {
     const resultat = await extraireEtInserer(pool, specialite, pays, ville);
+    res.json(resultat);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Déclenché par le Flow Directus (formulaire pays/ville/zone) — récupère population, pop15-59,
+// pop60+, densité (HCP + OpenStreetMap) et prix_m2 (Yakeey) pour une nouvelle zone, crée la
+// ville si besoin, refuse une zone déjà enregistrée, et insère en statut "brouillon".
+app.post('/api/admin/extraction-zone', async (req, res) => {
+  const { pays, ville, zone } = req.body ?? {};
+  if (!pays || !ville || !zone) {
+    res.status(400).json({ error: 'Paramètres requis : pays, ville, zone.' });
+    return;
+  }
+
+  try {
+    const resultat = await extraireEtInsererZone(pool, pays, ville, zone);
     res.json(resultat);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
