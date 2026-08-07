@@ -8,6 +8,7 @@ import { Search, Tag, ShieldCheck, RotateCcw } from 'lucide-react';
 import { FilterState } from '../types';
 
 interface FilterSectionProps {
+  
   filters: FilterState;
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
   categories: string[];

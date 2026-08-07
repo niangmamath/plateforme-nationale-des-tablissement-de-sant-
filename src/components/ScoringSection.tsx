@@ -18,6 +18,7 @@ interface SpecialitePoids {
   pop1559: number;
   pop60plus: number;
   concurrence: number;
+  autresSpecialites: number; // NOUVEAU CRITÈRE
 }
 
 interface SpecialiteApi {
@@ -42,8 +43,7 @@ interface SpecialiteApi {
 
 type CritereKey = keyof SpecialitePoids;
 
-// 6 critères communs à toutes les spécialités — mêmes curseurs pour tout le monde,
-// seuls les poids de départ (venus de la base) diffèrent selon la spécialité.
+// 7 critères communs à toutes les spécialités
 const CRITERES: { key: CritereKey; label: string }[] = [
   { key: 'prix', label: "Pouvoir d'achat (Prix/m²)" },
   { key: 'population', label: 'Population totale' },
@@ -51,15 +51,11 @@ const CRITERES: { key: CritereKey; label: string }[] = [
   { key: 'pop1559', label: 'Population active (15-59 ans)' },
   { key: 'pop60plus', label: 'Population sénior (60+ ans)' },
   { key: 'concurrence', label: 'Faible concurrence' },
+  { key: 'autresSpecialites', label: "Présence d'autres spécialités" }, // NOUVEAU CURSEUR
 ];
 
-// Icônes disponibles pour une spécialité, choisies dans Directus (champ "icone") — liste fermée
-// pour rester simple ; à défaut d'une correspondance, on retombe sur Stethoscope.
 const ICONES: Record<string, LucideIcon> = { Stethoscope, Eye, Building2, HeartPulse, Brain, Activity, Bone, Syringe, Microscope };
 
-// Classes Tailwind complètes par couleur (valeur du champ "couleur" en base) — écrites en
-// toutes lettres ici pour que Tailwind les détecte à la compilation, même si le choix se fait
-// dynamiquement à l'exécution. Ajouter une couleur ici si une nouvelle spécialité en a besoin.
 const COULEURS: Record<string, { actif: string; icone: string }> = {
   blue: { actif: 'bg-blue-600/20 border-blue-500', icone: 'text-blue-400' },
   emerald: { actif: 'bg-emerald-600/20 border-emerald-500', icone: 'text-emerald-400' },
@@ -77,8 +73,6 @@ interface ScoringSectionProps {
 }
 
 export default function ScoringSection({ villes, etablissements, initialVilleId, currency = "DH" }: ScoringSectionProps) {
-  // Ville active pour cette section : suit la ville sélectionnée globalement quand il y en a une,
-  // sinon repli sur la première ville du pays + sélecteur local pour en choisir une autre ici.
   const [activeVilleId, setActiveVilleId] = useState<string | undefined>(initialVilleId ?? villes[0]?.id);
 
   useEffect(() => {
@@ -93,9 +87,11 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
   const [selectedAreaForBP, setSelectedAreaForBP] = useState<any | null>(null);
   const [isExpertMode, setIsExpertMode] = useState(false);
 
-  const [weights, setWeights] = useState<SpecialitePoids>({ prix: 17, population: 17, densite: 17, pop1559: 16, pop60plus: 17, concurrence: 16 });
+  // Distribution initiale par défaut (total = ~100)
+  const [weights, setWeights] = useState<SpecialitePoids>({ 
+    prix: 14, population: 14, densite: 14, pop1559: 14, pop60plus: 14, concurrence: 15, autresSpecialites: 15 
+  });
 
-  // Config des spécialités (poids de scoring + templates de business plan) chargée depuis Postgres
   const [specialites, setSpecialites] = useState<SpecialiteApi[]>([]);
 
   useEffect(() => {
@@ -110,18 +106,35 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
     setIsExpertMode(false);
 
     const found = specialites.find((s) => s.id === spec);
-    if (found) setWeights(found.poids);
+    if (found) {
+      // Sécurité au cas où la base de données ne contient pas encore le champ "autresSpecialites"
+      setWeights({
+        ...found.poids,
+        autresSpecialites: (found.poids as any).autresSpecialites ?? 15
+      });
+    }
   };
 
-  // Concurrence réelle : nombre d'établissements publiés de cette spécialité, par zone —
-  // la catégorie etablissements correspondante vient de la base (categorieEtablissement),
-  // pas d'une correspondance codée en dur.
+  // 1. Calcul des Concurrents Directs
   const concurrenceParZone = useMemo(() => {
     const categorie = specialites.find((s) => s.id === selectedSpecialty)?.categorieEtablissement;
     if (!categorie) return {} as Record<string, number>;
     const counts: Record<string, number> = {};
     for (const e of etablissements) {
       if (e.categorie !== categorie || e.ville !== villeName || !e.arrondissement) continue;
+      counts[e.arrondissement] = (counts[e.arrondissement] ?? 0) + 1;
+    }
+    return counts;
+  }, [etablissements, selectedSpecialty, specialites, villeName]);
+
+  // 2. Calcul des Autres Spécialités (Effet de Synergie / Pôle médical)
+  const autresSpecialitesParZone = useMemo(() => {
+    const categorie = specialites.find((s) => s.id === selectedSpecialty)?.categorieEtablissement;
+    if (!categorie) return {} as Record<string, number>;
+    const counts: Record<string, number> = {};
+    for (const e of etablissements) {
+      // On compte ceux qui sont dans la même ville, mais qui NE SONT PAS de la même catégorie
+      if (e.categorie === categorie || e.ville !== villeName || !e.arrondissement) continue;
       counts[e.arrondissement] = (counts[e.arrondissement] ?? 0) + 1;
     }
     return counts;
@@ -137,6 +150,7 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
       pop60plus: zone.pop60_plus ?? 15,
       densiteVal: zone.densite ?? 0,
       concurrenceCount: concurrenceParZone[zone.nom] ?? 0,
+      autresSpecCount: autresSpecialitesParZone[zone.nom] ?? 0, // Ajout aux zones
     }));
 
     const getMinMax = (key: keyof typeof enrichedZones[0]) => {
@@ -150,19 +164,21 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
     const mmPop = getMinMax('population');
     const mmDensite = getMinMax('densiteVal');
     const mmConcurrence = getMinMax('concurrenceCount');
+    const mmAutresSpec = getMinMax('autresSpecCount');
 
     const normalize = (val: number, min: number, max: number) => {
       if (max === min) return 50;
       return ((val - min) / (max - min)) * 100;
     };
 
-    const totalW = weights.prix + weights.population + weights.densite + weights.pop1559 + weights.pop60plus + weights.concurrence || 1;
+    const totalW = weights.prix + weights.population + weights.densite + weights.pop1559 + weights.pop60plus + weights.concurrence + weights.autresSpecialites || 1;
     const pPrix = weights.prix / totalW;
     const pPop = weights.population / totalW;
     const pDensite = weights.densite / totalW;
     const pPop1559 = weights.pop1559 / totalW;
     const pPop60plus = weights.pop60plus / totalW;
     const pConcurrence = weights.concurrence / totalW;
+    const pAutresSpec = weights.autresSpecialites / totalW;
 
     return enrichedZones.map(arr => {
       const normPrix = normalize(arr.prixM2, mmPrix.min, mmPrix.max);
@@ -170,18 +186,19 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
       const normPop60plus = normalize(arr.pop60plus, mmPop60plus.min, mmPop60plus.max);
       const normPop = normalize(arr.population, mmPop.min, mmPop.max);
       const normDensite = normalize(arr.densiteVal, mmDensite.min, mmDensite.max);
-      // Moins de concurrents dans la zone -> meilleur score (inversé).
       const normConcurrence = 100 - normalize(arr.concurrenceCount, mmConcurrence.min, mmConcurrence.max);
+      
+      // Plus il y a d'autres spécialités, meilleur est le score de ce critère (synergie)
+      const normAutresSpec = normalize(arr.autresSpecCount, mmAutresSpec.min, mmAutresSpec.max);
 
-      const score = (normPrix * pPrix) + (normPop * pPop) + (normDensite * pDensite) + (normPop1559 * pPop1559) + (normPop60plus * pPop60plus) + (normConcurrence * pConcurrence);
+      const score = (normPrix * pPrix) + (normPop * pPop) + (normDensite * pDensite) + (normPop1559 * pPop1559) + (normPop60plus * pPop60plus) + (normConcurrence * pConcurrence) + (normAutresSpec * pAutresSpec);
 
       return { ...arr, finalScore: Math.round(score) };
     }).sort((a, b) => b.finalScore - a.finalScore).slice(0, 10);
-  }, [selectedSpecialty, weights, zones, villeName, concurrenceParZone]);
+  }, [selectedSpecialty, weights, zones, villeName, concurrenceParZone, autresSpecialitesParZone]);
 
-  const totalW = weights.prix + weights.population + weights.densite + weights.pop1559 + weights.pop60plus + weights.concurrence || 1;
+  const totalW = weights.prix + weights.population + weights.densite + weights.pop1559 + weights.pop60plus + weights.concurrence + weights.autresSpecialites || 1;
 
-  // SÉLECTION DYNAMIQUE DE LA CONFIGURATION (L'ADN DU BUSINESS PLAN), chargée depuis Postgres
   const getActiveConfig = () => specialites.find((s) => s.id === selectedSpecialty) || null;
 
   return (
@@ -310,7 +327,6 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
         )}
       </AnimatePresence>
 
-      {/* LE GÉNÉRATEUR UNIVERSEL EST LÀ, TOUT PROPRE ! */}
       <AnimatePresence>
         {selectedAreaForBP && selectedSpecialty && getActiveConfig() && (
           <BusinessPlanGenerator 

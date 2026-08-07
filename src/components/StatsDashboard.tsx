@@ -151,6 +151,35 @@ export default function StatsDashboard({ establishments, zones }: StatsDashboard
     return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   }, [establishments]);
 
+
+
+  // ALGORITHME DE CALCUL DES POURCENTAGES POUR LE DONUT CHART
+  const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
+    const RADIAN = Math.PI / 180;
+    // On écarte le texte à l'extérieur de l'anneau (15% plus loin)
+    const radius = outerRadius * 1.15;
+    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+    // Sécurité visuelle : On masque le pourcentage si la part est minuscule (< 2%) 
+    // pour éviter que les textes ne se superposent sur le graphique.
+    if (percent < 0.02) return null;
+
+    return (
+      <text 
+        x={x} 
+        y={y} 
+        fill="#475569" // text-slate-600
+        textAnchor={x > cx ? 'start' : 'end'} 
+        dominantBaseline="central"
+        fontSize="11"
+        fontWeight="900"
+      >
+        {`${(percent * 100).toFixed(1)}%`}
+      </text>
+    );
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
@@ -374,12 +403,25 @@ export default function StatsDashboard({ establishments, zones }: StatsDashboard
             {activeTab === 'categorie' && (
               <ResponsiveContainer width="100%" height={360}>
                 <PieChart>
-                  <Pie data={statsByCategorie} cx="50%" cy="50%" innerRadius={90} outerRadius={130} paddingAngle={4} dataKey="value" stroke="none">
+                  <Pie 
+                    data={statsByCategorie} 
+                    cx="50%" 
+                    cy="50%" 
+                    innerRadius={90} 
+                    outerRadius={130} 
+                    paddingAngle={4} 
+                    dataKey="value" 
+                    stroke="none"
+                    label={renderCustomizedLabel} // <-- ON INJECTE LES POURCENTAGES ICI
+                    labelLine={false} // <-- ON CACHE LA PETITE LIGNE POUR UN DESIGN CLEAN
+                  >
                     {statsByCategorie.map((_, index) => (
                       <Cell key={`cell-${index}`} fill={COLOR_PALETTE[index % COLOR_PALETTE.length]} />
                     ))}
                   </Pie>
-                  <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                  <RechartsTooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} 
+                  />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', marginTop: '20px' }} />
                 </PieChart>
               </ResponsiveContainer>
