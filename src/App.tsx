@@ -2,12 +2,11 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-import GlobalLocationSelector from './components/GlobalLocationSelector';
 import ScoringSection from './components/ScoringSection';
 import ChatbotWidget from './components/ChatbotWidget';
 import React, { useState, useMemo, useEffect } from 'react';
 import { computeKpis } from './data/etablissements';
-import { Etablissement, FilterState, PaysGeo, VilleGeo } from './types';
+import { Etablissement, FilterState, PaysGeo, Specialite, VilleGeo } from './types';
 import KpiSection from './components/KpiSection';
 import FilterSection from './components/FilterSection';
 import SidebarList from './components/SidebarList';
@@ -20,6 +19,7 @@ export default function App() {
   // Données chargées depuis l'API (Postgres)
   const [countries, setCountries] = useState<PaysGeo[]>([]);
   const [baseEstablishments, setBaseEstablishments] = useState<Etablissement[]>([]);
+  const [specialites, setSpecialites] = useState<Specialite[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -27,10 +27,12 @@ export default function App() {
     Promise.all([
       fetch('/api/pays').then((r) => r.json()),
       fetch('/api/etablissements').then((r) => r.json()),
+      fetch('/api/specialites').then((r) => r.json()),
     ])
-      .then(([paysData, etabsData]: [PaysGeo[], Etablissement[]]) => {
+      .then(([paysData, etabsData, specialitesData]: [PaysGeo[], Etablissement[], Specialite[]]) => {
         setCountries(paysData);
         setBaseEstablishments(etabsData);
+        setSpecialites(specialitesData);
       })
       .catch(() => setLoadError("Impossible de charger les données depuis l'API."))
       .finally(() => setIsLoading(false));
@@ -110,7 +112,7 @@ export default function App() {
         const matchesName = etab.nom.toLowerCase().includes(query);
         const matchesAddress = etab.adresse.toLowerCase().includes(query);
         const matchesQuartier = etab.quartier.toLowerCase().includes(query);
-        const matchesSpeciality = etab.specialites?.some(s => s.toLowerCase().includes(query)) || false;
+        const matchesSpeciality = etab.categorie.toLowerCase().includes(query);
         if (!matchesName && !matchesAddress && !matchesQuartier && !matchesSpeciality) {
           return false;
         }
@@ -211,17 +213,6 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-slate-50 via-blue-50/40 to-slate-100 text-slate-800 font-sans selection:bg-blue-600 selection:text-white pb-12">
 
-      {/* LA NOUVELLE BARRE GLOBALE DE SÉLECTION PAYS / VILLE */}
-      <GlobalLocationSelector
-        countries={countries}
-        selectedCountry={selectedCountry}
-        selectedCity={selectedCity}
-        onCountryChange={setSelectedCountry}
-        onCityChange={setSelectedCity}
-      />
-
-
-
       {/* Toast Notification Container */}
       <div className="fixed bottom-5 right-5 z-[2000] pointer-events-none">
         {showImportToast && (
@@ -278,11 +269,6 @@ export default function App() {
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 md:px-8 mt-8 flex flex-col gap-6">
         
-        {/* Dynamic KPIs Block */}
-        <section id="kpis-section">
-          <KpiSection kpis={kpis} />
-        </section>
-
         {/* Filters Panel */}
         <section id="filters-section">
           <FilterSection
@@ -290,8 +276,17 @@ export default function App() {
             setFilters={setFilters}
             categories={uniqueCategories}
             sources={uniqueSources}
-            
+            countries={countries}
+            selectedCountry={selectedCountry}
+            selectedCity={selectedCity}
+            onCountryChange={setSelectedCountry}
+            onCityChange={setSelectedCity}
           />
+        </section>
+
+        {/* Dynamic KPIs Block */}
+        <section id="kpis-section">
+          <KpiSection kpis={kpis} establishments={filteredEstablishments} specialites={specialites} />
         </section>
 
         {/* Informative Note banner */}
@@ -313,6 +308,7 @@ export default function App() {
               establishments={filteredEstablishments}
               selectedId={selectedId}
               onSelectEstablishment={handleSelectEstablishment}
+              specialites={specialites}
             />
           </div>
 
@@ -324,6 +320,7 @@ export default function App() {
               onSelectEstablishment={handleSelectEstablishment}
               center={selectedCity ? [selectedCity.lat, selectedCity.lng] : countryCenter}
               zoom={selectedCity ? selectedCity.zoomBase : 6}
+              specialites={specialites}
             />
           </div>
         </section>

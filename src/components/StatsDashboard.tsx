@@ -3,13 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import BusinessPlanGenerator from './BusinessPlanOphtalmo.tsx';
 import React, { useState, useMemo } from 'react';
 import { Etablissement } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
-import { BarChart3, PieChart as PieIcon, TrendingUp, Sparkles, LayoutDashboard, Map, Users, Stethoscope, ChevronUp, ChevronDown, ChevronsUpDown, Target, FileText, MessageSquare } from 'lucide-react';
+import { BarChart3, PieChart as PieIcon, TrendingUp, Sparkles, LayoutDashboard, Map, Users, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { motion } from 'motion/react';
-import { SPECIALTIES_CONFIG } from '../config/specialties'; // IMPORT DU CERVEAU !
 
 interface ZoneDemographie {
   nom: string;
@@ -27,19 +25,14 @@ interface StatsDashboardProps {
 }
 
 export default function StatsDashboard({ establishments, zones }: StatsDashboardProps) {
-  type TabType = 'demographie' | 'scoring' | 'ville' | 'quartier' | 'categorie' | 'source';
+  type TabType = 'demographie' | 'ville' | 'quartier' | 'categorie' | 'source';
   const [activeTab, setActiveTab] = useState<TabType>('demographie');
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
 
-  // Initialiser sur la première spécialité du fichier de config
-  const initialSpecialty = Object.keys(SPECIALTIES_CONFIG)[0];
-  const [targetSpecialty, setTargetSpecialty] = useState<string>(initialSpecialty);
-  
-  const [isBpOpen, setIsBpOpen] = useState(false);
-  const [selectedArrondissementForBp, setSelectedArrondissementForBp] = useState<any>(null);
-
   const COLOR_PALETTE = ['#2563eb', '#0ea5e9', '#4f46e5', '#10b981', '#8b5cf6', '#f43f5e', '#f59e0b'];
 
+  // Établissements par zone (toutes catégories confondues — la répartition par spécialité est
+  // déjà disponible dans l'onglet "categorie") — plus de décompte codé en dur sur 3 spécialités.
   const demographicAnalysis = useMemo(() => {
     const currentVilles = new Set(establishments.map(e => e.ville));
 
@@ -50,49 +43,14 @@ export default function StatsDashboard({ establishments, zones }: StatsDashboard
         return etabArrClean === arrNameClean || etabArrClean.includes(arrNameClean) || arrNameClean.includes(etabArrClean);
       });
 
-      const cliniques = etabsInArr.filter(e => e.categorie.includes('Clinique')).length;
-      const ophtalmos = etabsInArr.filter(e => e.categorie.includes('Ophtalmo')).length;
-      const dermatos = etabsInArr.filter(e => e.categorie.includes('Derma')).length;
-      const totalEtabs = cliniques + ophtalmos + dermatos;
+      const totalEtabs = etabsInArr.length;
       const ratio100k = arr.population > 0 ? ((totalEtabs / arr.population) * 100000).toFixed(1) : "0.0";
 
-      return { ...arr, cliniques, ophtalmos, dermatos, totalEtabs, ratio100k, etabsInArr };
+      return { ...arr, totalEtabs, ratio100k, etabsInArr };
     })
     .filter(a => currentVilles.has(a.ville))
     .filter(a => a.nom !== "Moulay Rachid" && a.nom !== "Zouagha");
   }, [establishments, zones]);
-
-  // ALGORITHME DE SCORING INTELLIGENT (Connecté à SPECIALTIES_CONFIG)
-  const recommendedAreas = useMemo(() => {
-    if (!targetSpecialty || !SPECIALTIES_CONFIG[targetSpecialty]) return [];
-    
-    const config = SPECIALTIES_CONFIG[targetSpecialty];
-
-    return demographicAnalysis.map(arr => {
-      // 1. Calcul du score Démographique (normalisé sur la tranche la plus haute)
-      const popRatio = arr[config.cibleKey] as number;
-      const popScore = (popRatio / (config.cibleKey === 'pop15_59' ? 65 : 30)) * 10;
-      
-      // 2. Calcul du score Pouvoir d'Achat (basé sur l'immo)
-      const powerScore = (arr.prixM2 / 20000) * 10;
-      
-      // 3. Calcul de la Concurrence
-      // On compte les établissements locaux qui correspondent à notre spécialité
-      const specCount = arr.etabsInArr.filter(e => e.categorie.toLowerCase().includes(config.id.toLowerCase().substring(0, 5))).length;
-      const compScore = specCount === 0 ? 10 : Math.max(0, 10 - ((specCount / arr.population) * 100000));
-      
-      // 4. Score pondéré final
-      const rawScore = (popScore * config.scoring.popWeight) + 
-                       (powerScore * config.scoring.powerWeight) + 
-                       (compScore * config.scoring.compWeight);
-                       
-      // Mise à l'échelle sur 100
-      const sumWeights = config.scoring.popWeight + config.scoring.powerWeight + config.scoring.compWeight;
-      const finalScore = Math.min(100, Math.max(0, (rawScore / sumWeights) * 10));
-
-      return { ...arr, score: Math.round(finalScore), insight: config.scoring.insightFort };
-    }).sort((a, b) => b.score - a.score).slice(0, 3);
-  }, [demographicAnalysis, targetSpecialty]);
 
   const sortedDemographics = useMemo(() => {
     let sortableItems = [...demographicAnalysis];
@@ -167,17 +125,17 @@ export default function StatsDashboard({ establishments, zones }: StatsDashboard
         </div>
 
         <div className="flex p-1.5 bg-slate-50/80 border border-slate-200/60 rounded-xl w-full xl:w-auto overflow-x-auto scrollbar-none shadow-inner">
-          {(['demographie', 'scoring', 'ville', 'quartier', 'categorie', 'source'] as TabType[]).map((tab) => (
+          {(['demographie', 'ville', 'quartier', 'categorie', 'source'] as TabType[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap ${
-                activeTab === tab 
-                  ? 'bg-white text-blue-700 shadow-sm border border-slate-200/50' 
+                activeTab === tab
+                  ? 'bg-white text-blue-700 shadow-sm border border-slate-200/50'
                   : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100/50'
               }`}
             >
-              {tab === 'demographie' ? 'Démographie' : tab === 'scoring' ? '🎯 Scoring IA' : tab}
+              {tab === 'demographie' ? 'Démographie' : tab}
             </button>
           ))}
         </div>
@@ -191,64 +149,6 @@ export default function StatsDashboard({ establishments, zones }: StatsDashboard
           </div>
         ) : (
           <div className="h-full w-full">
-            
-            {/* ONGLET SCORING STRATÉGIQUE DYNAMIQUE */}
-            {activeTab === 'scoring' && (
-              <div className="animate-in fade-in duration-500">
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                  <div className="flex items-center gap-3">
-                    <Target className="h-8 w-8 text-blue-600 p-1.5 bg-white rounded-lg shadow-sm" />
-                    <div>
-                      <h3 className="text-xs font-black text-slate-900 uppercase tracking-wide">Assistant d'Implantation Médicale</h3>
-                      <p className="text-[10px] font-medium text-slate-500 mt-0.5">Basé sur la population cible, le pouvoir d'achat (prix m²) et la concurrence.</p>
-                    </div>
-                  </div>
-                  
-                  {/* GENERATION DYNAMIQUE DES BOUTONS DE SPECIALITÉ */}
-                  <div className="flex flex-wrap gap-1 bg-white rounded-lg shadow-sm border border-slate-200 p-1">
-                    {Object.values(SPECIALTIES_CONFIG).map(spec => (
-                      <button 
-                        key={spec.id}
-                        onClick={() => setTargetSpecialty(spec.id)} 
-                        className={`px-4 py-1.5 text-[10px] font-bold uppercase rounded-md transition-colors ${targetSpecialty === spec.id ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
-                      >
-                        {spec.id}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {recommendedAreas.map((arr, index) => (
-                    <div key={arr.nom} className="bg-white border-2 border-slate-100 rounded-2xl p-6 shadow-sm relative overflow-hidden transition-all hover:border-blue-200 hover:shadow-md flex flex-col justify-between">
-                      <div className="absolute top-0 right-0 bg-blue-600 text-white font-black text-[10px] uppercase px-3 py-1.5 rounded-bl-xl shadow-sm">Top {index + 1}</div>
-                      
-                      <div>
-                        <h4 className="text-lg font-black text-slate-900 leading-none">{arr.nom}</h4>
-                        <div className="text-3xl font-black text-emerald-500 mt-3 flex items-baseline gap-1">
-                          {arr.score} <span className="text-xs text-slate-400 font-semibold uppercase">/ 100</span>
-                        </div>
-                        <p className="text-[11px] text-slate-600 mt-3 font-medium leading-relaxed border-l-2 border-blue-500 pl-3">
-                          {arr.insight}
-                        </p>
-                      </div>
-
-                      <div className="mt-5 space-y-3">
-                        <button 
-                          onClick={() => {
-                            setSelectedArrondissementForBp(arr);
-                            setIsBpOpen(true);
-                          }}
-                          className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white text-[11px] font-black uppercase tracking-wider py-3 rounded-xl hover:bg-blue-600 transition-colors shadow-sm"
-                        >
-                          <FileText className="h-4 w-4" /> Générer le Business Plan
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* ONGLET DEMOGRAPHIE */}
             {activeTab === 'demographie' && (
@@ -274,17 +174,8 @@ export default function StatsDashboard({ establishments, zones }: StatsDashboard
                       <th className="p-3 text-center cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('prixM2')}>
                         Prix Immo {getSortIcon('prixM2')}
                       </th>
-                      <th className="p-3 text-center border-l border-slate-200 text-emerald-700 bg-emerald-50/50 cursor-pointer hover:bg-emerald-100/50 transition-colors" onClick={() => handleSort('cliniques')}>
-                        Cliniques {getSortIcon('cliniques')}
-                      </th>
-                      <th className="p-3 text-center text-cyan-700 bg-cyan-50/50 cursor-pointer hover:bg-cyan-100/50 transition-colors" onClick={() => handleSort('ophtalmos')}>
-                        Ophtalmo. {getSortIcon('ophtalmos')}
-                      </th>
-                      <th className="p-3 text-center text-purple-700 bg-purple-50/50 cursor-pointer hover:bg-purple-100/50 transition-colors" onClick={() => handleSort('dermatos')}>
-                        Dermato. {getSortIcon('dermatos')}
-                      </th>
-                      <th className="p-3 text-center text-blue-800 bg-blue-100/50 cursor-pointer hover:bg-blue-200/50 transition-colors" onClick={() => handleSort('totalEtabs')}>
-                        Total {getSortIcon('totalEtabs')}
+                      <th className="p-3 text-center border-l border-slate-200 text-blue-800 bg-blue-100/50 cursor-pointer hover:bg-blue-200/50 transition-colors" onClick={() => handleSort('totalEtabs')}>
+                        Établissements {getSortIcon('totalEtabs')}
                       </th>
                       <th className="p-3 text-center bg-indigo-50/50 text-indigo-800 cursor-pointer hover:bg-indigo-100/50 transition-colors" onClick={() => handleSort('ratio100k')}>
                         Couv. {getSortIcon('ratio100k')}
@@ -321,10 +212,7 @@ export default function StatsDashboard({ establishments, zones }: StatsDashboard
                           </span>
                         </td>
 
-                        <td className="p-3 text-center font-black text-emerald-700 bg-emerald-50/10 border-l border-slate-50">{row.cliniques}</td>
-                        <td className="p-3 text-center font-black text-cyan-700 bg-cyan-50/10">{row.ophtalmos}</td>
-                        <td className="p-3 text-center font-black text-purple-700 bg-purple-50/10">{row.dermatos}</td>
-                        <td className="p-3 text-center font-black text-blue-800 bg-blue-50/20">{row.totalEtabs}</td>
+                        <td className="p-3 text-center font-black text-blue-800 bg-blue-50/20 border-l border-slate-50">{row.totalEtabs}</td>
                         
                         <td className="p-3 text-center bg-indigo-50/10">
                           <span className={`px-2.5 py-1 rounded-lg font-black shadow-sm border text-[11px] ${Number(row.ratio100k) < 2 ? 'bg-red-50 text-red-700 border-red-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
@@ -436,13 +324,6 @@ export default function StatsDashboard({ establishments, zones }: StatsDashboard
           </div>
         </div>
       </div>
-
-      <BusinessPlanGenerator 
-        isOpen={isBpOpen} 
-        onClose={() => setIsBpOpen(false)} 
-        arrondissement={selectedArrondissementForBp} 
-        specialty={targetSpecialty} 
-      />
     </motion.div>
   );
 }

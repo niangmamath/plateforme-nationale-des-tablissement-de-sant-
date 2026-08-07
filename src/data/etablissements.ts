@@ -5233,17 +5233,10 @@ export function getQuartiersByVille(ville: string): string[] {
 export function computeKpis(data: Etablissement[]): KpiData {
   const uniqueVilles = new Set(data.map(e => e.ville)).size;
   const uniqueQuartiers = new Set(data.map(e => e.quartier)).size;
-  
-  const cliniquesCount = data.filter(e => e.categorie.toLowerCase().includes("clinique")).length;
-  const ophtalmologuesCount = data.filter(e => e.categorie.toLowerCase().includes("ophtalmo")).length;
-  const dermatologuesCount = data.filter(e => e.categorie.toLowerCase().includes("derma")).length;
+
   return {
     totalEtablissements: data.length,
     totalVilles: uniqueVilles,
     totalQuartiers: uniqueQuartiers,
-    totalCliniques: cliniquesCount,
-    totalOphtalmologues: ophtalmologuesCount,
-    totalDermatologues: dermatologuesCount,
-    totalCabinets: 0
   };
 }

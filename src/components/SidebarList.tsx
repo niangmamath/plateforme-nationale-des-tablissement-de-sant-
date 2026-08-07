@@ -4,44 +4,39 @@
  */
 
 import React from 'react';
-import { Etablissement } from '../types';
-import { MapPin, Landmark, HelpCircle, Eye, ShieldAlert, ChevronRight } from 'lucide-react';
+import { Etablissement, Specialite } from '../types';
+import { MapPin, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { ICONES, ICONE_DEFAUT, BADGE_PAR_COULEUR, BADGE_DEFAUT } from '../config/specialiteVisuels';
 
 interface SidebarListProps {
   establishments: Etablissement[];
   selectedId: string | null;
   onSelectEstablishment: (establishment: Etablissement) => void;
+  specialites: Specialite[];
 }
 
 export default function SidebarList({
   establishments,
   selectedId,
-  onSelectEstablishment
+  onSelectEstablishment,
+  specialites
 }: SidebarListProps) {
-  
-  const getCategoryColor = (category: string) => {
-    if (category === "Clinique Privée") {
-      return "bg-blue-50 text-blue-800 border-blue-200";
-    } else if (category === "Ophtalmologie") {
-      return "bg-cyan-50 text-cyan-800 border-cyan-200";
-    } else if (category === "Cabinet Médical") {
-      return "bg-indigo-50 text-indigo-800 border-indigo-200";
-    } else {
-      return "bg-slate-50 text-slate-800 border-slate-200";
-    }
+
+  // Badge/icône par catégorie, dérivés des spécialités publiées (icone/couleur en base) — les
+  // catégories sans spécialité correspondante (ex. "Cabinet Médical") retombent sur un badge neutre.
+  const findSpecialite = (category: string) => specialites.find((s) => s.categorieEtablissement === category);
+
+  const getCategoryClasses = (category: string) => {
+    const spec = findSpecialite(category);
+    const badge = spec ? (BADGE_PAR_COULEUR[spec.couleur] ?? BADGE_DEFAUT) : BADGE_DEFAUT;
+    return `${badge.bg} ${badge.text} ${badge.border}`;
   };
 
   const getCategoryIcon = (category: string) => {
-    if (category === "Clinique Privée") {
-      return <Landmark className="h-3 w-3 mr-1" />;
-    } else if (category === "Ophtalmologie") {
-      return <Eye className="h-3 w-3 mr-1" />;
-    } else if (category === "Cabinet Médical") {
-      return <ShieldAlert className="h-3 w-3 mr-1" />;
-    } else {
-      return <HelpCircle className="h-3 w-3 mr-1" />;
-    }
+    const spec = findSpecialite(category);
+    const Icone = (spec ? ICONES[spec.icone] : undefined) ?? ICONE_DEFAUT;
+    return <Icone className="h-3 w-3 mr-1" />;
   };
 
   return (
@@ -103,7 +98,7 @@ export default function SidebarList({
                   <div className="flex flex-col gap-1.5">
                     {/* Category */}
                     <div className="flex items-center justify-between gap-2">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${getCategoryColor(etab.categorie)}`}>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${getCategoryClasses(etab.categorie)}`}>
                         {getCategoryIcon(etab.categorie)}
                         {etab.categorie}
                       </span>

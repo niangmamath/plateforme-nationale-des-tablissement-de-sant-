@@ -4,24 +4,35 @@
  */
 
 import React from 'react';
-import { Search, Tag, ShieldCheck, RotateCcw } from 'lucide-react';
-import { FilterState } from '../types';
+import { Search, Tag, ShieldCheck, RotateCcw, Globe, MapPin } from 'lucide-react';
+import { FilterState, PaysGeo, VilleGeo } from '../types';
+
+const TOUTES_LES_VILLES = '__all__';
 
 interface FilterSectionProps {
   filters: FilterState;
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
   categories: string[];
   sources: string[];
-  // villes et quartiers ont été retirés des props car la ville est gérée par la Top Bar globale
+  countries: PaysGeo[];
+  selectedCountry: PaysGeo;
+  selectedCity: VilleGeo | null;
+  onCountryChange: (country: PaysGeo) => void;
+  onCityChange: (city: VilleGeo | null) => void;
 }
 
 export default function FilterSection({
   filters,
   setFilters,
   categories,
-  sources
+  sources,
+  countries,
+  selectedCountry,
+  selectedCity,
+  onCountryChange,
+  onCityChange
 }: FilterSectionProps) {
-  
+
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFilters(prev => ({ ...prev, search: e.target.value }));
   };
@@ -30,17 +41,34 @@ export default function FilterSection({
     setFilters(prev => ({ ...prev, [field]: value }));
   };
 
+  const handleCountrySelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newCountry = countries.find(c => c.id === e.target.value);
+    if (newCountry) {
+      onCountryChange(newCountry);
+      onCityChange(null); // Retour sur "toutes les villes" du nouveau pays
+    }
+  };
+
+  const handleCitySelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (e.target.value === TOUTES_LES_VILLES) {
+      onCityChange(null);
+      return;
+    }
+    const newCity = selectedCountry.villes.find(v => v.id === e.target.value);
+    if (newCity) onCityChange(newCity);
+  };
+
   const resetFilters = () => {
     setFilters(prev => ({
       ...prev,
       search: '',
       categorie: '',
       source: ''
-      // On ne réinitialise PAS la ville et le quartier, car ils sont contrôlés par la Top Bar
+      // Pays/ville ne sont pas des filtres au sens strict (ils changent le périmètre affiché
+      // partout sur la page) — on ne les réinitialise pas ici, comme quartier.
     }));
   };
 
-  // On vérifie s'il y a un filtre actif (autre que la ville, qui est gérée par la top bar)
   const isFiltered = filters.search !== '' || filters.categorie !== '' || filters.source !== '';
 
   return (
@@ -63,9 +91,38 @@ export default function FilterSection({
         </div>
 
         {/* Dropdowns */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          
-          {/* Le filtre "Ville" a été retiré. Les utilisateurs utiliseront la Top Bar (GlobalLocationSelector) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+          {/* Pays filter */}
+          <div className="relative">
+            <label htmlFor="filter-pays" className="block text-[10px] uppercase font-black tracking-widest text-slate-400 mb-1.5 flex items-center gap-1">
+              <Globe className="h-3 w-3 text-blue-500" /> PAYS
+            </label>
+            <select
+              id="filter-pays"
+              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-slate-800 focus:ring-4 focus:ring-slate-900/5 transition-all text-xs font-bold cursor-pointer"
+              value={selectedCountry.id}
+              onChange={handleCountrySelect}
+            >
+              {countries.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+            </select>
+          </div>
+
+          {/* Ville filter */}
+          <div className="relative">
+            <label htmlFor="filter-ville" className="block text-[10px] uppercase font-black tracking-widest text-slate-400 mb-1.5 flex items-center gap-1">
+              <MapPin className="h-3 w-3 text-blue-500" /> VILLE
+            </label>
+            <select
+              id="filter-ville"
+              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-slate-800 focus:ring-4 focus:ring-slate-900/5 transition-all text-xs font-bold cursor-pointer"
+              value={selectedCity ? selectedCity.id : TOUTES_LES_VILLES}
+              onChange={handleCitySelect}
+            >
+              <option value={TOUTES_LES_VILLES}>Toutes les villes</option>
+              {selectedCountry.villes.map(v => <option key={v.id} value={v.id}>{v.nom}</option>)}
+            </select>
+          </div>
 
           {/* Catégorie filter */}
           <div className="relative">
@@ -110,7 +167,7 @@ export default function FilterSection({
                   id="btn-reset-filters"
                   onClick={resetFilters}
                   className="px-4 py-2.5 border-2 border-rose-500 bg-white hover:bg-rose-50 text-rose-600 transition-all rounded-xl flex items-center justify-center gap-1.5 text-xs font-black cursor-pointer whitespace-nowrap shadow-sm hover:shadow active:scale-95"
-                  title="Réinitialiser tous les filtres (sauf la ville)"
+                  title="Réinitialiser les filtres (recherche, catégorie, source)"
                 >
                   <RotateCcw className="h-3.5 w-3.5 stroke-[3]" />
                   RÀZ

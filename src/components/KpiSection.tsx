@@ -3,17 +3,33 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
-import { Building2, Eye, MapPin, Layers, Globe, Activity, Sparkles } from 'lucide-react';
-import { KpiData } from '../types';
+import React, { useMemo } from 'react';
+import { Globe, MapPin, Activity } from 'lucide-react';
+import { Etablissement, KpiData, Specialite } from '../types';
 import { motion } from 'motion/react';
+import { ICONES, ICONE_DEFAUT, KPI_TEXTE_PAR_COULEUR, KPI_ICONE_PAR_COULEUR } from '../config/specialiteVisuels';
 
 interface KpiSectionProps {
   kpis: KpiData;
+  establishments: Etablissement[];
+  specialites: Specialite[];
 }
 
-export default function KpiSection({ kpis }: KpiSectionProps) {
-  const cards = [
+export default function KpiSection({ kpis, establishments, specialites }: KpiSectionProps) {
+  // Une carte par spécialité publiée ayant au moins un établissement dans le périmètre actuel —
+  // plus de liste de spécialités codée en dur : ça suit automatiquement ce qui est publié dans
+  // Directus (specialites.categorie_etablissement) et ce qui existe réellement en base.
+  const specialtyCards = useMemo(() => {
+    return specialites
+      .map((s) => ({
+        specialite: s,
+        count: establishments.filter((e) => e.categorie === s.categorieEtablissement).length,
+      }))
+      .filter((c) => c.count > 0)
+      .sort((a, b) => b.count - a.count);
+  }, [establishments, specialites]);
+
+  const fixedCards = [
     {
       id: "kpi-total",
       label: "Établissements",
@@ -41,33 +57,19 @@ export default function KpiSection({ kpis }: KpiSectionProps) {
       iconColor: "text-amber-500",
       desc: "Répertoriés"
     },
-    {
-      id: "kpi-cliniques",
-      label: "Cliniques",
-      value: kpis.totalCliniques.toLocaleString(),
-      icon: Building2,
-      textColor: "text-emerald-600",
-      iconColor: "text-emerald-500",
-      desc: "Privées & Publiques"
-    },
-    {
-      id: "kpi-ophtalmologues",
-      label: "Ophtalmo",
-      value: kpis.totalOphtalmologues.toLocaleString(),
-      icon: Eye,
-      textColor: "text-orange-500",
-      iconColor: "text-orange-500",
-      desc: "Spécialistes vision"
-    },
-    {
-      id: "kpi-dermatologues",
-      label: "Dermato",
-      value: kpis.totalDermatologues.toLocaleString(),
-      icon: Sparkles,
-      textColor: "text-purple-600",
-      iconColor: "text-purple-500",
-      desc: "Spécialistes peau"
-    }
+  ];
+
+  const cards = [
+    ...fixedCards,
+    ...specialtyCards.map(({ specialite, count }) => ({
+      id: `kpi-specialite-${specialite.id}`,
+      label: specialite.nom,
+      value: count.toLocaleString(),
+      icon: ICONES[specialite.icone] ?? ICONE_DEFAUT,
+      textColor: KPI_TEXTE_PAR_COULEUR[specialite.couleur] ?? 'text-slate-800',
+      iconColor: KPI_ICONE_PAR_COULEUR[specialite.couleur] ?? 'text-slate-500',
+      desc: specialite.categorieEtablissement,
+    })),
   ];
 
   return (
@@ -92,7 +94,7 @@ export default function KpiSection({ kpis }: KpiSectionProps) {
                 {card.value}
               </div>
             </div>
-            
+
             <div className="mt-3 flex items-center justify-center gap-1.5 text-[10px] text-slate-500 font-semibold">
               <IconComponent className={`h-3 w-3 ${card.iconColor}`} />
               <span>{card.desc}</span>

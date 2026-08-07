@@ -31,10 +31,16 @@ export interface KpiData {
   totalEtablissements: number;
   totalVilles: number;
   totalQuartiers: number;
-  totalCliniques: number;
-  totalOphtalmologues: number;
-  totalDermatologues: number;
-  totalCabinets: number;
+}
+
+// Sous-ensemble de /api/specialites utilisé pour le rendu visuel (KPI, carte, panneau de
+// résultats) — pas les champs spécifiques au business plan, qui restent dans ScoringSection.
+export interface Specialite {
+  id: string;
+  nom: string;
+  couleur: string;
+  icone: string;
+  categorieEtablissement: string;
 }
 
 // =========================================================

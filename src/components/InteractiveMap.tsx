@@ -5,8 +5,9 @@
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import L from 'leaflet';
-import { Etablissement, MapStyle } from '../types';
+import { Etablissement, MapStyle, Specialite } from '../types';
 import { Maximize, Compass, MapPin, Map, Sun, Moon } from 'lucide-react';
+import { HEX_PAR_COULEUR, HEX_DEFAUT, SVG_PAR_ICONE, SVG_DEFAUT } from '../config/specialiteVisuels';
 
 interface InteractiveMapProps {
   establishments: Etablissement[];
@@ -14,6 +15,7 @@ interface InteractiveMapProps {
   onSelectEstablishment: (establishment: Etablissement) => void;
   center?: [number, number]; // Nouvelles props pour la scalabilité
   zoom?: number;             // Nouvelles props pour la scalabilité
+  specialites: Specialite[];
 }
 
 export default function InteractiveMap({
@@ -21,35 +23,30 @@ export default function InteractiveMap({
   selectedId,
   onSelectEstablishment,
   center = [33.5731, -7.5898], // Casablanca par défaut
-  zoom = 12
+  zoom = 12,
+  specialites
 }: InteractiveMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<{ [id: string]: L.Marker }>({});
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
-  
+
   const [currentStyle, setCurrentStyle] = useState<MapStyle>('google-streets');
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Configuration de la palette et des icônes par catégorie
-  const CATEGORY_CONFIG: Record<string, { color: string, svg: string }> = {
-    'Clinique Privée': {
-      color: '#2563eb', // Bleu
-      svg: `<path d="M19 12H5M12 19V5"/>` // Bâtiment (plus simple)
-    },
-    'Ophtalmologie': {
-      color: '#0891b2', // Cyan
-      svg: `<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0z"/><circle cx="12" cy="12" r="3"/>` // Oeil
-    },
-    'Dermatologie': {
-      color: '#9333ea', // Violet
-      svg: `<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>` // Goutte (Peau)
-    },
-    'default': {
-      color: '#475569', // Gris (pour le reste)
-      svg: `<circle cx="12" cy="12" r="10"/>` // Cercle par défaut
+  // Palette et icônes par catégorie d'établissement, dérivées des spécialités publiées
+  // (icone/couleur en base) — plus de liste fermée codée en dur ici.
+  const CATEGORY_CONFIG = useMemo(() => {
+    const config: Record<string, { color: string; svg: string }> = {};
+    for (const s of specialites) {
+      config[s.categorieEtablissement] = {
+        color: HEX_PAR_COULEUR[s.couleur] ?? HEX_DEFAUT,
+        svg: SVG_PAR_ICONE[s.icone] ?? SVG_DEFAUT,
+      };
     }
-  };
+    config['default'] = { color: HEX_DEFAUT, svg: SVG_DEFAUT };
+    return config;
+  }, [specialites]);
 
   // Map Tile Layers Configuration
   const TILE_LAYERS = {
@@ -220,7 +217,7 @@ export default function InteractiveMap({
     } else if (bounds.length === 1 && !selectedId) {
       map.setView(bounds[0], 12);
     }
-  }, [establishments]);
+  }, [establishments, CATEGORY_CONFIG]);
 
   // Sync External selection
   useEffect(() => {
