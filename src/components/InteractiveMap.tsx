@@ -31,9 +31,13 @@ export default function InteractiveMap({
   // Refs pour les outils d'analyse géospatiale
   const radiusLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const distanceLayerGroupRef = useRef<L.LayerGroup | null>(null);
+  const userLocationLayerGroupRef = useRef<L.LayerGroup | null>(null); // NOUVEAU : Calque pour la localisation utilisateur
   
   const [currentStyle, setCurrentStyle] = useState<MapStyle>('google-streets');
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // NOUVEAU : État pour stocker la position GPS de l'utilisateur
+  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
 
   // États : Rayon
   const [isRadiusMode, setIsRadiusMode] = useState(false);
@@ -117,6 +121,7 @@ export default function InteractiveMap({
     layerGroupRef.current = L.layerGroup().addTo(map);
     radiusLayerGroupRef.current = L.layerGroup().addTo(map);
     distanceLayerGroupRef.current = L.layerGroup().addTo(map);
+    userLocationLayerGroupRef.current = L.layerGroup().addTo(map); // Init calque localisation
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
@@ -134,6 +139,50 @@ export default function InteractiveMap({
     map.eachLayer((layer) => { if (layer instanceof L.TileLayer) map.removeLayer(layer); });
     L.tileLayer(TILE_LAYERS[currentStyle].url, { attribution: TILE_LAYERS[currentStyle].attribution, maxZoom: 19 }).addTo(map);
   }, [currentStyle]);
+
+  // NOUVEAU : Afficher le marqueur rouge de la localisation utilisateur
+  useEffect(() => {
+    const map = mapRef.current;
+    const uGroup = userLocationLayerGroupRef.current;
+    if (!map || !uGroup) return;
+
+    uGroup.clearLayers();
+
+    if (userLocation) {
+      // Création d'un marqueur HTML rouge avec effet "ping"
+      const html = `
+        <div class="relative flex items-center justify-center">
+          <div class="absolute -inset-3 bg-red-500/40 rounded-full animate-ping duration-1000"></div>
+          <div class="relative flex items-center justify-center w-5 h-5 rounded-full bg-red-600 border-2 border-white shadow-lg shadow-red-900/50">
+            <div class="w-1.5 h-1.5 bg-white rounded-full"></div>
+          </div>
+        </div>
+      `;
+      
+      const userIcon = L.divIcon({
+        className: 'custom-user-marker',
+        html: html,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+        popupAnchor: [0, -12]
+      });
+
+      const marker = L.marker(userLocation, { icon: userIcon, zIndexOffset: 1000 });
+      
+      const popupContent = `
+        <div class="text-center p-2 min-w-[120px]">
+          <div class="text-[11px] text-slate-800 font-black tracking-wide">Vous êtes ici</div>
+          <div class="text-[9px] text-slate-400 mt-1 uppercase font-bold tracking-widest">Localisation GPS</div>
+        </div>
+      `;
+      
+      marker.bindPopup(popupContent, { className: 'custom-leaflet-popup', closeButton: false });
+      uGroup.addLayer(marker);
+      
+      // Ouvre la popup automatiquement quand on trouve la position
+      setTimeout(() => marker.openPopup(), 400);
+    }
+  }, [userLocation]);
 
   // Gérer les clics pour Rayon ET Distance
   useEffect(() => {
@@ -154,7 +203,6 @@ export default function InteractiveMap({
     } else {
       map.off('click', onMapClick);
       map.getContainer().style.cursor = '';
-      // Nettoyage au cas où les modes sont éteints
       if (!isRadiusMode) setRadiusCenter(null);
       if (!isDistanceMode) setDistancePoints([]);
     }
@@ -208,15 +256,10 @@ export default function InteractiveMap({
 
     if (isDistanceMode && distancePoints.length > 0) {
       const [p1, p2] = distancePoints;
-
-      // Point A
       dGroup.addLayer(L.circleMarker(p1, { radius: 6, color: '#be123c', fillColor: '#ffffff', fillOpacity: 1, weight: 3 }));
 
       if (p2) {
-        // Point B
         dGroup.addLayer(L.circleMarker(p2, { radius: 6, color: '#be123c', fillColor: '#ffffff', fillOpacity: 1, weight: 3 }));
-
-        // Ligne
         const line = L.polyline([p1, p2], { color: '#e11d48', weight: 4, dashArray: '8, 8' });
         const distanceKm = (map.distance(p1, p2) / 1000).toFixed(2);
         
@@ -289,7 +332,7 @@ export default function InteractiveMap({
     setTimeout(() => { marker.openPopup(); }, 350);
   }, [selectedId]);
 
-  // Fonctions de toggles intelligents (l'un désactive l'autre)
+  // Toggles intelligents
   const handleToggleRadius = () => {
     setIsRadiusMode(!isRadiusMode);
     if (!isRadiusMode) setIsDistanceMode(false);
@@ -298,6 +341,31 @@ export default function InteractiveMap({
   const handleToggleDistance = () => {
     setIsDistanceMode(!isDistanceMode);
     if (!isDistanceMode) setIsRadiusMode(false);
+  };
+
+  // NOUVEAU : Fonction dédiée pour la localisation
+  const handleLocateMe = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!navigator.geolocation) {
+      alert("La géolocalisation n'est pas supportée par votre navigateur.");
+      return;
+    }
+    
+    // Demande la position au navigateur
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        // Met à jour l'état, ce qui déclenchera le useEffect affichant le point rouge
+        setUserLocation([latitude, longitude]);
+        // Centre la carte sur l'utilisateur
+        map.flyTo([latitude, longitude], 15, { duration: 1.5 });
+      },
+      () => {
+        // En cas d'erreur (permission refusée), retourne au centre de la ville
+        map.flyTo(center, zoom, { duration: 1.5 });
+      }
+    );
   };
 
   const activeCategories = useMemo(() => Array.from(new Set(establishments.map(e => e.categorie))).map(cat => ({
@@ -378,23 +446,15 @@ export default function InteractiveMap({
         </div>
 
         <div className="flex gap-2 pointer-events-auto">
-          {/* Nouveau Bouton Distance */}
+          <button onClick={handleToggleDistance} className={`p-2.5 rounded-xl shadow-md border transition-all cursor-pointer ${isDistanceMode ? 'bg-rose-600 text-white border-rose-700 shadow-rose-600/30' : 'bg-white text-slate-800 hover:text-black hover:bg-slate-50 border-slate-200'}`} title="Mesurer une distance"><Ruler className="h-4.5 w-4.5 stroke-[2.5]" /></button>
+          <button onClick={handleToggleRadius} className={`p-2.5 rounded-xl shadow-md border transition-all cursor-pointer ${isRadiusMode ? 'bg-blue-600 text-white border-blue-700 shadow-blue-600/30' : 'bg-white text-slate-800 hover:text-black hover:bg-slate-50 border-slate-200'}`} title="Outil de Mesure par Rayon"><Radar className="h-4.5 w-4.5 stroke-[2.5]" /></button>
           <button 
-            onClick={handleToggleDistance} 
-            className={`p-2.5 rounded-xl shadow-md border transition-all cursor-pointer ${isDistanceMode ? 'bg-rose-600 text-white border-rose-700 shadow-rose-600/30' : 'bg-white text-slate-800 hover:text-black hover:bg-slate-50 border-slate-200'}`} 
-            title="Mesurer une distance"
+            onClick={handleLocateMe} 
+            className="p-2.5 bg-white text-slate-800 hover:text-black hover:bg-slate-50 rounded-xl shadow-md border border-slate-200 transition-all cursor-pointer" 
+            title="Me géolocaliser (Position Rouge)"
           >
-            <Ruler className="h-4.5 w-4.5 stroke-[2.5]" />
+            <MapPin className="h-4.5 w-4.5 stroke-[2.5]" />
           </button>
-          {/* Bouton Rayon */}
-          <button 
-            onClick={handleToggleRadius} 
-            className={`p-2.5 rounded-xl shadow-md border transition-all cursor-pointer ${isRadiusMode ? 'bg-blue-600 text-white border-blue-700 shadow-blue-600/30' : 'bg-white text-slate-800 hover:text-black hover:bg-slate-50 border-slate-200'}`} 
-            title="Outil de Mesure par Rayon"
-          >
-            <Radar className="h-4.5 w-4.5 stroke-[2.5]" />
-          </button>
-          <button onClick={() => { if(navigator.geolocation) navigator.geolocation.getCurrentPosition((p) => mapRef.current?.flyTo([p.coords.latitude, p.coords.longitude], 14), () => mapRef.current?.flyTo(center, zoom)); }} className="p-2.5 bg-white text-slate-800 hover:text-black hover:bg-slate-50 rounded-xl shadow-md border border-slate-200 transition-all cursor-pointer" title="Me géolocaliser"><MapPin className="h-4.5 w-4.5 stroke-[2.5]" /></button>
           <button onClick={() => { if(!document.fullscreenElement) containerRef.current?.requestFullscreen(); else document.exitFullscreen(); }} className="p-2.5 bg-white text-slate-800 hover:text-black hover:bg-slate-50 rounded-xl shadow-md border border-slate-200 transition-all cursor-pointer" title="Plein écran"><Maximize className="h-4.5 w-4.5 stroke-[2.5]" /></button>
         </div>
       </div>

@@ -12,6 +12,7 @@ interface FilterSectionProps {
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
   categories: string[];
   sources: string[];
+  
   // villes et quartiers ont été retirés des props car la ville est gérée par la Top Bar globale
 }
 
