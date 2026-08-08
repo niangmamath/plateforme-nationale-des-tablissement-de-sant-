@@ -48,8 +48,7 @@ export default function StatsDashboard({ establishments, zones }: StatsDashboard
 
       return { ...arr, totalEtabs, ratio100k, etabsInArr };
     })
-    .filter(a => currentVilles.has(a.ville))
-    .filter(a => a.nom !== "Moulay Rachid" && a.nom !== "Zouagha");
+    .filter(a => currentVilles.has(a.ville));
   }, [establishments, zones]);
 
   const sortedDemographics = useMemo(() => {
