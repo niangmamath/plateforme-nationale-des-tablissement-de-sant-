@@ -1,5 +1,5 @@
 {
-  "name": "Plateforme Nationale des Établissements de Santé",
+  "name": "Empower Doctor",
   "description": "Plateforme nationale de cartographie, de recherche et d'analyse des établissements de santé au Maroc.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

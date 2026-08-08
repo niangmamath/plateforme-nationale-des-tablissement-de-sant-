@@ -12,8 +12,7 @@ import FilterSection from './components/FilterSection';
 import SidebarList from './components/SidebarList';
 import InteractiveMap from './components/InteractiveMap';
 import StatsDashboard from './components/StatsDashboard';
-import { motion } from 'motion/react';
-import { Activity, Plus, Download, Database, CheckCircle, Info, Heart } from 'lucide-react';
+import { Activity, Plus, Database, Info, Heart } from 'lucide-react';
 
 export default function App() {
   // Données chargées depuis l'API (Postgres)
@@ -64,9 +63,6 @@ export default function App() {
 
   // Track currently highlighted/selected establishment
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  const [showImportToast, setShowImportToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState('');
 
   // Établissements du périmètre actuellement sélectionné (via le sélecteur global en haut de page) :
   // une ville précise si elle est choisie, sinon tout le pays. C'est ce périmètre qui alimente
@@ -168,32 +164,6 @@ export default function App() {
     setSelectedId(establishment.id);
   };
 
-  // Simulation: Simulated Excel file export
-  const handleExcelExport = () => {
-    const headers = ["Nom", "Catégorie", "Ville", "Quartier", "Adresse", "Latitude", "Longitude", "Source", "Place_ID"];
-    const rows = filteredEstablishments.map(e => [
-      e.nom, e.categorie, e.ville, e.quartier, e.adresse, e.latitude, e.longitude, e.source, e.placeId
-    ]);
-
-    const csvContent = [
-      headers.join(","),
-      ...rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))
-    ].join("\n");
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `etablissements_sante_maroc_${new Date().toISOString().slice(0,10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    setToastMessage(`Export Excel réussi : ${filteredEstablishments.length} établissements téléchargés.`);
-    setShowImportToast(true);
-    setTimeout(() => setShowImportToast(false), 4000);
-  };
-
   if (loadError) {
     return (
       <div className="min-h-screen flex items-center justify-center text-rose-700 font-bold text-sm">
@@ -213,24 +183,6 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-slate-50 via-blue-50/40 to-slate-100 text-slate-800 font-sans selection:bg-blue-600 selection:text-white pb-12">
 
-      {/* Toast Notification Container */}
-      <div className="fixed bottom-5 right-5 z-[2000] pointer-events-none">
-        {showImportToast && (
-          <motion.div
-            initial={{ opacity: 0, y: 50, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.9 }}
-            className="pointer-events-auto bg-slate-900 text-white rounded-xl shadow-2xl shadow-blue-900/20 p-4 max-w-sm flex items-start gap-3 border border-slate-800"
-          >
-            <CheckCircle className="h-5 w-5 text-blue-400 mt-0.5 flex-shrink-0" />
-            <div>
-              <h4 className="text-xs font-black uppercase tracking-wider text-white">Notification Plateforme</h4>
-              <p className="text-[11px] font-medium text-slate-300 mt-0.5 leading-relaxed">{toastMessage}</p>
-            </div>
-          </motion.div>
-        )}
-      </div>
-
       {/* Modern High-End Top Bar / Navigation */}
       <header className="sticky top-0 z-[1010] bg-white/80 backdrop-blur-xl border-b border-slate-200/80 px-4 py-4 md:px-8 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)]">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -241,27 +193,10 @@ export default function App() {
               <Activity className="h-5.5 w-5.5 stroke-[2.5]" />
             </div>
             <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200/50">{selectedCountry.nom}</span>
-                <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 border border-blue-200/50">{selectedCity ? selectedCity.nom : selectedCountry.villes.map((v) => v.nom).join(' et ')}</span>
-              </div>
               <h1 className="text-sm md:text-lg font-black text-slate-900 tracking-tight mt-1 uppercase">
-                Plateforme Nationale des Établissements de Santé
+                Empower Doctor
               </h1>
             </div>
-          </div>
-
-          {/* SaaS Simulation Controls */}
-          <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-            <button
-              id="btn-excel-export"
-              onClick={handleExcelExport}
-              className="flex-1 sm:flex-initial px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-blue-600/25 active:scale-95"
-              title="Télécharger l'état actuel au format Excel/CSV"
-            >
-              <Download className="h-4 w-4 stroke-[2.5]" />
-              <span>Exporter CSV</span>
-            </button>
           </div>
         </div>
       </header>
