@@ -179,11 +179,15 @@ async function chercherPolygoneOverpass(pool: Pool, nomZone: string, ville: stri
   const lat = Number(rows[0].lat);
   const lng = Number(rows[0].lng);
   const marge = 0.15;
-  // OSM tague parfois sans accent ("Gueliz") alors qu'on cherche "Guéliz" — la regex Overpass
-  // est insensible à la casse mais pas aux accents, donc on désaccentue avant de construire la
-  // requête pour matcher les deux orthographes.
-  const nomEchappe = enleverAccents(nomZone).replace(/[.*+?^${}()|[\]\\"]/g, '\\$&');
-  const requete = `[out:json][timeout:20];\nrelation["boundary"="administrative"]["name"~"${nomEchappe}",i](${lat - marge},${lng - marge},${lat + marge},${lng + marge});\nout geom;`;
+  // OSM tague tantôt sans accent ("Gueliz" alors qu'on cherche "Guéliz"), tantôt avec ("Ménara",
+  // exactement comme on le cherche) — la regex Overpass est insensible à la casse mais pas aux
+  // accents, donc une seule normalisation dans un sens ne suffit pas. On construit une alternative
+  // (accentuée|désaccentuée) pour matcher les deux orthographes quel que soit le sens du décalage.
+  const echapper = (s: string) => s.replace(/[.*+?^${}()|[\]\\"]/g, '\\$&');
+  const original = echapper(nomZone);
+  const desaccente = echapper(enleverAccents(nomZone));
+  const motif = original === desaccente ? original : `${original}|${desaccente}`;
+  const requete = `[out:json][timeout:20];\nrelation["boundary"="administrative"]["name"~"${motif}",i](${lat - marge},${lng - marge},${lat + marge},${lng + marge});\nout geom;`;
 
   for (const miroir of OVERPASS_MIROIRS) {
     try {
