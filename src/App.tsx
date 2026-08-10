@@ -282,10 +282,10 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4 text-slate-400 text-[10px] font-black uppercase tracking-wider">
           <div className="flex items-center gap-1.5">
             <Database className="h-4 w-4 text-slate-400" />
-            <span>Architecture PostGIS préréglée. Mode actuel : Simulation.</span>
+            <span>Architecture PostGIS .</span>
           </div>
           <div>
-            <span>© 2026 Ministère de la Santé - {selectedCountry.nom}. Tous droits réservés.</span>
+            <span>© 2026 CFconsulting @JAMIL & Mamath {selectedCountry.nom}. Tous droits réservés.</span>
           </div>
           <div className="flex items-center gap-1">
             <span>Développé pour la</span>
