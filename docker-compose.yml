@@ -34,6 +34,10 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:-medimplant}
       ADMIN_EMAIL: ${DIRECTUS_ADMIN_EMAIL:-admin@medimplant.local}
       ADMIN_PASSWORD: ${DIRECTUS_ADMIN_PASSWORD:-medimplant}
+      # Autorise les Flows à rappeler l'API Directus elle-même (ex. opération "Webhook/Request URL"
+      # vers localhost:8055) — bloqué par défaut par la protection anti-SSRF de Directus. Sans danger
+      # ici : instance 100% locale, jamais exposée à l'extérieur.
+      IMPORT_IP_DENY_LIST: ""
     volumes:
       - medimplant-directus-uploads:/directus/uploads
 

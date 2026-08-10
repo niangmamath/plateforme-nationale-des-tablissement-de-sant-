@@ -52,7 +52,7 @@ export default function App() {
     search: '',
     ville: '',
     quartier: '',
-    categorie: '',
+    categorie: [],
     source: ''
   });
 
@@ -119,7 +119,7 @@ export default function App() {
       // Quartier Filter
       if (filters.quartier && etab.quartier !== filters.quartier) return false;
       // Categorie Filter
-      if (filters.categorie && etab.categorie !== filters.categorie) return false;
+      if (filters.categorie.length > 0 && !filters.categorie.includes(etab.categorie)) return false;
       // Source Filter
       if (filters.source && etab.source !== filters.source) return false;
 

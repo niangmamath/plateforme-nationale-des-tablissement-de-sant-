@@ -23,7 +23,7 @@ export interface FilterState {
   search: string;
   ville: string;
   quartier: string;
-  categorie: string;
+  categorie: string[];
   source: string;
 }
 

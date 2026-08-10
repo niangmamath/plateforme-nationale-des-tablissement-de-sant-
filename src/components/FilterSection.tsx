@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
-import { Search, Tag, ShieldCheck, RotateCcw, Globe, MapPin } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Search, Tag, ShieldCheck, RotateCcw, Globe, MapPin, ChevronDown, Check } from 'lucide-react';
 import { FilterState, PaysGeo, VilleGeo } from '../types';
 
 const TOUTES_LES_VILLES = '__all__';
@@ -37,9 +37,32 @@ export default function FilterSection({
     setFilters(prev => ({ ...prev, search: e.target.value }));
   };
 
-  const handleSelectChange = (field: keyof FilterState, value: string) => {
+  const handleSelectChange = (field: 'source', value: string) => {
     setFilters(prev => ({ ...prev, [field]: value }));
   };
+
+  const toggleCategorie = (categorie: string) => {
+    setFilters(prev => ({
+      ...prev,
+      categorie: prev.categorie.includes(categorie)
+        ? prev.categorie.filter(c => c !== categorie)
+        : [...prev.categorie, categorie],
+    }));
+  };
+
+  // Menu déroulant à cases à cocher pour la catégorie (multi-sélection) — fermeture au clic extérieur
+  const [categorieOuvert, setCategorieOuvert] = useState(false);
+  const categorieRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (categorieRef.current && !categorieRef.current.contains(e.target as Node)) {
+        setCategorieOuvert(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleCountrySelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newCountry = countries.find(c => c.id === e.target.value);
@@ -62,14 +85,14 @@ export default function FilterSection({
     setFilters(prev => ({
       ...prev,
       search: '',
-      categorie: '',
+      categorie: [],
       source: ''
       // Pays/ville ne sont pas des filtres au sens strict (ils changent le périmètre affiché
       // partout sur la page) — on ne les réinitialise pas ici, comme quartier.
     }));
   };
 
-  const isFiltered = filters.search !== '' || filters.categorie !== '' || filters.source !== '';
+  const isFiltered = filters.search !== '' || filters.categorie.length > 0 || filters.source !== '';
 
   return (
     <div id="filter-panel" className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
@@ -124,24 +147,67 @@ export default function FilterSection({
             </select>
           </div>
 
-          {/* Catégorie filter */}
-          <div className="relative">
-            <label htmlFor="filter-categorie" className="block text-[10px] uppercase font-black tracking-widest text-slate-400 mb-1.5 flex items-center gap-1">
+          {/* Catégorie filter (multi-sélection) */}
+          <div className="relative" ref={categorieRef}>
+            <label id="filter-categorie-label" className="block text-[10px] uppercase font-black tracking-widest text-slate-400 mb-1.5 flex items-center gap-1">
               <Tag className="h-3 w-3 text-purple-500" /> CATÉGORIE
             </label>
-            <select
+            <button
               id="filter-categorie"
-              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-slate-800 focus:ring-4 focus:ring-slate-900/5 transition-all text-xs font-bold cursor-pointer"
-              value={filters.categorie}
-              onChange={(e) => handleSelectChange('categorie', e.target.value)}
+              type="button"
+              aria-haspopup="listbox"
+              aria-expanded={categorieOuvert}
+              aria-labelledby="filter-categorie-label"
+              onClick={() => setCategorieOuvert(o => !o)}
+              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-slate-800 focus:ring-4 focus:ring-slate-900/5 transition-all text-xs font-bold cursor-pointer flex items-center justify-between gap-2"
             >
-              <option value="">Toutes les catégories</option>
-              {categories
-                .filter(c => c !== "Cabinet Médical") 
-                .map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-            </select>
+              <span className="truncate">
+                {filters.categorie.length === 0
+                  ? 'Toutes les catégories'
+                  : filters.categorie.length === 1
+                    ? filters.categorie[0]
+                    : `${filters.categorie.length} catégories sélectionnées`}
+              </span>
+              <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${categorieOuvert ? 'rotate-180' : ''}`} />
+            </button>
+
+            {categorieOuvert && (
+              <div
+                role="listbox"
+                aria-multiselectable="true"
+                className="absolute z-20 mt-1.5 w-full max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1.5"
+              >
+                {categories
+                  .filter(c => c !== "Cabinet Médical")
+                  .map(c => {
+                    const selected = filters.categorie.includes(c);
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        onClick={() => toggleCategorie(c)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                      >
+                        <span className={`flex items-center justify-center h-4 w-4 rounded border shrink-0 ${selected ? 'bg-slate-900 border-slate-900' : 'border-slate-300'}`}>
+                          {selected && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
+                        </span>
+                        <span className="truncate">{c}</span>
+                      </button>
+                    );
+                  })}
+                {filters.categorie.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setFilters(prev => ({ ...prev, categorie: [] }))}
+                    className="w-full text-left px-3 py-2 text-[10px] font-black uppercase tracking-wider text-rose-600 hover:bg-rose-50 transition-colors border-t border-slate-100 mt-1"
+                  >
+                    Effacer la sélection
+                  </button>
+                )}
+              </div>
+            )}
           </div>
           
           {/* Source filter */}
