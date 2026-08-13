@@ -5,6 +5,9 @@
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import L from 'leaflet';
+import 'leaflet.markercluster';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import { Etablissement, MapStyle, Specialite } from '../types';
 import { Maximize, Compass, MapPin, Map as MapIcon, Sun, Moon, Radar, X, Ruler, ChevronUp, ChevronDown } from 'lucide-react';
 import { HEX_PAR_COULEUR, HEX_DEFAUT, SVG_PAR_ICONE, SVG_DEFAUT } from '../config/specialiteVisuels';
@@ -29,7 +32,7 @@ export default function InteractiveMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<{ [id: string]: L.Marker }>({});
-  const layerGroupRef = useRef<L.LayerGroup | null>(null);
+  const layerGroupRef = useRef<L.MarkerClusterGroup | null>(null);
 
   // Refs pour les outils d'analyse géospatiale
   const radiusLayerGroupRef = useRef<L.LayerGroup | null>(null);
@@ -107,7 +110,17 @@ export default function InteractiveMap({
     L.control.attribution({ position: 'bottomright' }).addTo(map);
     L.tileLayer(TILE_LAYERS[currentStyle].url, { attribution: TILE_LAYERS[currentStyle].attribution, maxZoom: 19 }).addTo(map);
 
-    layerGroupRef.current = L.layerGroup().addTo(map);
+    // Clustering plutôt qu'un simple layerGroup : sans ville sélectionnée, la carte peut
+    // afficher des milliers de marqueurs d'un coup — les créer un par un sans regroupement
+    // bloquait le thread principal plusieurs secondes et rendait la carte illisible (pins
+    // superposés). disableClusteringAtZoom permet de revenir aux marqueurs individuels une
+    // fois zoomé sur un quartier.
+    layerGroupRef.current = L.markerClusterGroup({
+      maxClusterRadius: 60,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      disableClusteringAtZoom: 16,
+    }).addTo(map);
     radiusLayerGroupRef.current = L.layerGroup().addTo(map);
     distanceLayerGroupRef.current = L.layerGroup().addTo(map);
     userLocationLayerGroupRef.current = L.layerGroup().addTo(map);
@@ -243,6 +256,7 @@ export default function InteractiveMap({
 
     if (establishments.length === 0) return;
     const bounds: L.LatLngTuple[] = [];
+    const nouveauxMarqueurs: L.Marker[] = [];
 
     establishments.forEach((etab) => {
       const marker = L.marker([etab.latitude, etab.longitude], { icon: createSvgIcon(etab.categorie, etab.id === selectedId) });
@@ -285,9 +299,15 @@ export default function InteractiveMap({
       });
 
       markersRef.current[etab.id] = marker;
-      layerGroup.addLayer(marker);
+      nouveauxMarqueurs.push(marker);
       bounds.push([etab.latitude, etab.longitude]);
     });
+
+    // addLayers() (au pluriel) ajoute tous les marqueurs en un seul passage de reclustering,
+    // au lieu de recalculer l'arbre de clusters à chaque addLayer() individuel — c'était la
+    // cause d'un délai de ~28s entre la fin du chargement et l'affichage du premier marqueur
+    // sur de gros volumes (mesuré en prod avant ce correctif).
+    layerGroup.addLayers(nouveauxMarqueurs);
 
     if (bounds.length > 1 && !selectedId) {
       map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
@@ -299,11 +319,15 @@ export default function InteractiveMap({
   // Focus externe
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !selectedId || !markersRef.current[selectedId]) return;
+    const clusterGroup = layerGroupRef.current;
+    if (!map || !clusterGroup || !selectedId || !markersRef.current[selectedId]) return;
     const marker = markersRef.current[selectedId];
     establishments.forEach((e) => { if (markersRef.current[e.id]) markersRef.current[e.id].setIcon(createSvgIcon(e.categorie, e.id === selectedId)); });
-    map.flyTo(marker.getLatLng(), 15, { animate: true, duration: 1.2 });
-    setTimeout(() => { marker.openPopup(); }, 350);
+    // Un marqueur "avalé" dans un cluster n'est pas ajouté au DOM tant qu'on ne dézoome/spiderfy
+    // pas dessus — un simple flyTo() + openPopup() ne l'affichait donc pas pour les établissements
+    // regroupés (bug remonté par l'utilisateur). zoomToShowLayer gère ce dé-clustering avant
+    // d'ouvrir la popup, quel que soit le niveau de zoom de départ.
+    clusterGroup.zoomToShowLayer(marker, () => { marker.openPopup(); });
   }, [selectedId]);
 
   // Toggles intelligents

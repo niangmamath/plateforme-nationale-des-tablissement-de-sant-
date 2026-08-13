@@ -21,5 +21,12 @@ export default defineConfig(() => {
         '/api': process.env.API_URL || 'http://localhost:4000',
       },
     },
+    // Sert de banc de test perf local sur le bundle de prod (`npm run build && npm run preview`) :
+    // `vite preview` n'hérite pas de `server.proxy`, donc on le redéclare ici.
+    preview: {
+      proxy: {
+        '/api': process.env.API_URL || 'http://localhost:4000',
+      },
+    },
   };
 });
