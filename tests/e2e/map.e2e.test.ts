@@ -54,17 +54,20 @@ describe('Carte interactive', () => {
     // chances de couvrir un cas initialement regroupé dans un cluster.
     for (const id of ids.slice(0, 3)) {
       await driver.findElement(By.id(id)).click();
-      // Attend un élément précis DANS le contenu de la popup (le lien "Ouvrir Google Maps",
-      // toujours présent une fois le HTML réellement inséré) plutôt que juste le conteneur
-      // `.leaflet-popup-content` : ce dernier peut être localisé avant que son contenu ne soit
-      // peuplé, et Leaflet détruit/recrée la popup précédente à l'ouverture de la suivante
-      // (autoClose), d'où des lectures vides ou des références périmées sinon.
-      const lien = await driver.wait(
-        until.elementLocated(By.css('.leaflet-popup-content a')),
-        10000
-      );
-      const texte = await lien.getText();
-      expect(texte.length).toBeGreaterThan(0);
+      // Localise ET lit le lien "Ouvrir Google Maps" en une seule opération réessayée tant
+      // qu'elle échoue : Leaflet détruit/recrée la popup précédente à l'ouverture de la
+      // suivante (autoClose), donc localiser puis lire en deux étapes séparées peut retomber
+      // sur une référence déjà périmée (StaleElementReferenceError) pendant la transition.
+      const texte = await driver.wait(async () => {
+        try {
+          const el = await driver.findElement(By.css('.leaflet-popup-content a'));
+          const t = await el.getText();
+          return t.length > 0 ? t : null;
+        } catch {
+          return null;
+        }
+      }, 10000);
+      expect((texte as string).length).toBeGreaterThan(0);
     }
 
     const errors = await getSevereBrowserErrors(driver);
