@@ -12,6 +12,7 @@ import FilterSection from './components/FilterSection';
 import SidebarList from './components/SidebarList';
 import InteractiveMap from './components/InteractiveMap';
 import StatsDashboard from './components/StatsDashboard';
+import LoadingScreen from './components/LoadingScreen';
 import { Activity, Plus, Database, Info, Heart } from 'lucide-react';
 
 export default function App() {
@@ -173,11 +174,7 @@ export default function App() {
   }
 
   if (isLoading || !selectedCountry) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-slate-500 font-bold text-sm uppercase tracking-wider">
-        Chargement des données...
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   return (
