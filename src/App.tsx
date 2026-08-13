@@ -252,6 +252,7 @@ export default function App() {
               onSelectEstablishment={handleSelectEstablishment}
               center={selectedCity ? [selectedCity.lat, selectedCity.lng] : countryCenter}
               zoom={selectedCity ? selectedCity.zoomBase : 6}
+              villeSelectionnee={!!selectedCity}
               specialites={specialites}
             />
           </div>

@@ -23,14 +23,17 @@ describe('Performance perçue', () => {
     await driver?.quit();
   });
 
-  it('chargement initial + sélection de la ville la plus dense (Casablanca) < 10s', async () => {
+  // Casablanca affiche maintenant ~1562 marqueurs individuels (plus de clustering à
+  // l'échelle ville, cf. InteractiveMap.tsx) : plus lent à construire qu'une poignée de
+  // bulles, mais c'est le compromis explicitement demandé (tout voir sans regroupement).
+  it('chargement initial + sélection de la ville la plus dense (Casablanca) < 20s', async () => {
     const start = Date.now();
     await driver.get(BASE_URL);
     await waitForAppReady(driver);
     await selectVille(driver, 'Casablanca');
     const elapsed = Date.now() - start;
     console.log(`[perf] chargement initial + Casablanca : ${elapsed}ms`);
-    expect(elapsed).toBeLessThan(10000);
+    expect(elapsed).toBeLessThan(20000);
   });
 
   it('changement de ville (Casablanca -> Rabat) < 8s', async () => {

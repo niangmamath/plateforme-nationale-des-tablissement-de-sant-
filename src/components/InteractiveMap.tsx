@@ -12,12 +12,17 @@ import { Etablissement, MapStyle, Specialite } from '../types';
 import { Maximize, Compass, MapPin, Map as MapIcon, Sun, Moon, Radar, X, Ruler, ChevronUp, ChevronDown } from 'lucide-react';
 import { HEX_PAR_COULEUR, HEX_DEFAUT, SVG_PAR_ICONE, SVG_DEFAUT } from '../config/specialiteVisuels';
 
+// Zoom appliqué quand une ville est sélectionnée (zoomBase en base pour toutes les villes
+// actuelles — voir /api/pays). Sert aussi de seuil pour désactiver le clustering carte.
+const ZOOM_VILLE = 12;
+
 interface InteractiveMapProps {
   establishments: Etablissement[];
   selectedId: string | null;
   onSelectEstablishment: (establishment: Etablissement) => void;
   center?: [number, number]; // Nouvelles props pour la scalabilité
   zoom?: number;             // Nouvelles props pour la scalabilité
+  villeSelectionnee?: boolean;
   specialites: Specialite[];
 }
 
@@ -27,6 +32,7 @@ export default function InteractiveMap({
   onSelectEstablishment,
   center = [33.5731, -7.5898], // Casablanca par défaut
   zoom = 12,
+  villeSelectionnee = false,
   specialites
 }: InteractiveMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -113,14 +119,28 @@ export default function InteractiveMap({
     // Clustering plutôt qu'un simple layerGroup : sans ville sélectionnée, la carte peut
     // afficher des milliers de marqueurs d'un coup — les créer un par un sans regroupement
     // bloquait le thread principal plusieurs secondes et rendait la carte illisible (pins
-    // superposés). disableClusteringAtZoom permet de revenir aux marqueurs individuels une
-    // fois zoomé sur un quartier.
-    layerGroupRef.current = L.markerClusterGroup({
-      maxClusterRadius: 60,
+    // superposés). disableClusteringAtZoom = ZOOM_VILLE (le zoom utilisé dès qu'une ville
+    // est sélectionnée dans le filtre) : à l'échelle pays on garde les bulles, mais dès
+    // qu'on est à l'échelle d'une ville — via le sélecteur ou en zoomant sur la carte —
+    // tous les établissements individuels s'affichent automatiquement, sans regroupement.
+    // maxClusterRadius volontairement réduit : avec un rayon large, une bulle pouvait
+    // regrouper plusieurs villes proches (ex. Rabat+Salé), et zoomToBoundsOnClick devait
+    // alors zoomer moins fort pour garder tout ce contenu visible — laissant des
+    // sous-bulles après un premier clic. Un rayon serré permet à la quasi-totalité des
+    // bulles de se disperser entièrement en un clic (testé empiriquement : bulles OK
+    // partout sauf la plus grosse). Casablanca (~1500+ établissements sur une zone
+    // réellement large) reste une exception assumée : aucun réglage de rayon ne peut
+    // faire tenir "tout visible" et "assez zoomé pour ne plus regrouper" en un seul clic
+    // pour une zone aussi étendue — zoomToBoundsOnClick garantit qu'on ne voit jamais un
+    // écran vide, au prix d'un clic supplémentaire pour ce cas précis.
+    const clusterGroup = L.markerClusterGroup({
+      maxClusterRadius: 12,
       spiderfyOnMaxZoom: true,
       showCoverageOnHover: false,
-      disableClusteringAtZoom: 16,
-    }).addTo(map);
+      disableClusteringAtZoom: ZOOM_VILLE,
+    });
+    clusterGroup.addTo(map);
+    layerGroupRef.current = clusterGroup;
     radiusLayerGroupRef.current = L.layerGroup().addTo(map);
     distanceLayerGroupRef.current = L.layerGroup().addTo(map);
     userLocationLayerGroupRef.current = L.layerGroup().addTo(map);
@@ -309,12 +329,18 @@ export default function InteractiveMap({
     // sur de gros volumes (mesuré en prod avant ce correctif).
     layerGroup.addLayers(nouveauxMarqueurs);
 
-    if (bounds.length > 1 && !selectedId) {
+    // Une fois une ville sélectionnée, le zoom cible (ZOOM_VILLE, sous le seuil de
+    // déclustering) est déjà géré par l'effet [center, zoom] ci-dessous — fitBounds
+    // recalculerait sa propre valeur pour englober tous les établissements de la ville
+    // avec sa marge, ce qui peut redescendre sous ZOOM_VILLE et réactiver le clustering.
+    if (villeSelectionnee || selectedId) return;
+
+    if (bounds.length > 1) {
       map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
-    } else if (bounds.length === 1 && !selectedId) {
+    } else if (bounds.length === 1) {
       map.setView(bounds[0], 12);
     }
-  }, [establishments, CATEGORY_CONFIG]);
+  }, [establishments, CATEGORY_CONFIG, villeSelectionnee, selectedId]);
 
   // Focus externe
   useEffect(() => {

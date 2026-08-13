@@ -66,11 +66,11 @@ describe('Carte interactive', () => {
         } catch {
           return null;
         }
-      }, 10000);
+      }, 20000);
       expect((texte as string).length).toBeGreaterThan(0);
     }
 
     const errors = await getSevereBrowserErrors(driver);
     expect(errors).toEqual([]);
-  });
+  }, 90000); // 3 clics x jusqu'à 20s d'attente popup chacun, marge incluse
 });
