@@ -12,6 +12,13 @@ import { Etablissement, MapStyle, Specialite } from '../types';
 import { Maximize, Compass, MapPin, Map as MapIcon, Sun, Moon, Radar, X, Ruler, ChevronUp, ChevronDown } from 'lucide-react';
 import { HEX_PAR_COULEUR, HEX_DEFAUT, SVG_PAR_ICONE, SVG_DEFAUT } from '../config/specialiteVisuels';
 
+// Les popups de marqueur sont construites en concaténant des champs venant de la base
+// (nom, adresse...) dans une chaîne HTML passée telle quelle à Leaflet — sans échappement,
+// un champ contenant du HTML/JS (import CSV, saisie Directus) s'exécuterait dans le
+// navigateur de chaque visiteur ouvrant ce marqueur.
+const echapperHtml = (valeur: string): string =>
+  valeur.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+
 // Zoom appliqué quand une ville est sélectionnée (zoomBase en base pour toutes les villes
 // actuelles — voir /api/pays). Sert aussi de seuil pour désactiver le clustering carte.
 const ZOOM_VILLE = 12;
@@ -281,20 +288,26 @@ export default function InteractiveMap({
     establishments.forEach((etab) => {
       const marker = L.marker([etab.latitude, etab.longitude], { icon: createSvgIcon(etab.categorie, etab.id === selectedId) });
 
-      const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${etab.latitude},${etab.longitude}&query_place_id=${etab.placeId}`;
+      const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${etab.latitude},${etab.longitude}&query_place_id=${encodeURIComponent(etab.placeId)}`;
+      const categorie = echapperHtml(etab.categorie);
+      const source = echapperHtml(etab.source);
+      const nom = echapperHtml(etab.nom);
+      const quartierOuArrondissement = echapperHtml(etab.quartier || etab.arrondissement);
+      const ville = echapperHtml(etab.ville);
+      const adresse = echapperHtml(etab.adresse);
       const popupHtml = `
         <div class="p-4 font-sans min-w-[220px]" style="line-height: 1.4;">
           <div class="flex items-center justify-between gap-2 mb-2 border-b border-slate-200 pb-2">
-            <span class="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200">${etab.categorie}</span>
-            <span class="text-[9px] text-slate-400 font-bold uppercase">${etab.source}</span>
+            <span class="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200">${categorie}</span>
+            <span class="text-[9px] text-slate-400 font-bold uppercase">${source}</span>
           </div>
-          <h4 class="text-xs font-black text-slate-900 mb-1 leading-tight tracking-tight">${etab.nom}</h4>
+          <h4 class="text-xs font-black text-slate-900 mb-1 leading-tight tracking-tight">${nom}</h4>
           <p class="text-[10px] text-slate-500 mb-3 flex items-start gap-1 font-semibold">
             <svg class="h-3 w-3 text-slate-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-            <span>${etab.quartier || etab.arrondissement}, ${etab.ville}</span>
+            <span>${quartierOuArrondissement}, ${ville}</span>
           </p>
           <div class="flex flex-col gap-1 text-[9px] text-slate-400 bg-slate-50 border border-slate-200 p-2 rounded-lg mb-3">
-            <div><strong class="text-slate-700 font-bold uppercase text-[8px] tracking-wider">Adresse:</strong> ${etab.adresse}</div>
+            <div><strong class="text-slate-700 font-bold uppercase text-[8px] tracking-wider">Adresse:</strong> ${adresse}</div>
             <div class="flex justify-between mt-1.5 pt-1.5 border-t border-slate-200 font-semibold">
               <span>GPS: ${etab.latitude.toFixed(4)}, ${etab.longitude.toFixed(4)}</span>
             </div>

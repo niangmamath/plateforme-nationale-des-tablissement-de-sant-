@@ -10,6 +10,18 @@ const PORT = process.env.API_PORT || 4000;
 
 app.use(express.json());
 
+// Même garde que côté Vercel (api/admin/*.ts) : sans elle, ces routes déclenchent une
+// extraction (coût API Google, écritures en base) pour quiconque atteint ce serveur —
+// et `vite --host=0.0.0.0` l'expose au-delà de la seule machine locale.
+function verifierSecretAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const secret = process.env.ADMIN_EXTRACTION_SECRET;
+  if (!secret || req.headers['x-admin-secret'] !== secret) {
+    res.status(401).json({ error: 'Non autorisé.' });
+    return;
+  }
+  next();
+}
+
 app.get('/api/etablissements', async (_req, res) => {
   res.json(await getEtablissements(pool));
 });
@@ -24,7 +36,7 @@ app.get('/api/specialites', async (_req, res) => {
 
 // Déclenché par le Flow Directus (formulaire pays/ville/spécialité) — extrait, nettoie,
 // dédoublonne et insère les nouveaux établissements en statut "brouillon".
-app.post('/api/admin/extraction', async (req, res) => {
+app.post('/api/admin/extraction', verifierSecretAdmin, async (req, res) => {
   const { pays, ville, specialite } = req.body ?? {};
   if (!pays || !ville || !specialite) {
     res.status(400).json({ error: 'Paramètres requis : pays, ville, specialite.' });
@@ -42,7 +54,7 @@ app.post('/api/admin/extraction', async (req, res) => {
 // Déclenché par le Flow Directus (formulaire pays/ville/zone) — récupère population, pop15-59,
 // pop60+, densité (HCP + OpenStreetMap) et prix_m2 (Yakeey) pour une nouvelle zone, crée la
 // ville si besoin, refuse une zone déjà enregistrée, et insère en statut "brouillon".
-app.post('/api/admin/extraction-zone', async (req, res) => {
+app.post('/api/admin/extraction-zone', verifierSecretAdmin, async (req, res) => {
   const { pays, ville, zone } = req.body ?? {};
   if (!pays || !ville || !zone) {
     res.status(400).json({ error: 'Paramètres requis : pays, ville, zone.' });
