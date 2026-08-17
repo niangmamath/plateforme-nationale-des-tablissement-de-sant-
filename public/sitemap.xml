@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Une seule URL réelle : le site est une SPA sans routing (tout le contenu — filtres,
+  carte, fiches établissement — vit derrière une seule page, pas d'URLs dédiées par
+  ville/spécialité). Un sitemap multi-pages nécessiterait d'abord d'introduire du
+  routing côté app (niveau 2 du chantier SEO).
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://empower-doctor.vercel.app/</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>

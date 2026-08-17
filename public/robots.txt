@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://empower-doctor.vercel.app/sitemap.xml
