@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { chargerExistants, scoreCorrespondance, classifierScore, type FicheExistante } from './scraping/dedup';
 
 interface SpecialiteExtractionConfig {
   requete: string;
@@ -8,7 +9,7 @@ interface SpecialiteExtractionConfig {
   typesRequis: string[];
 }
 
-interface ZoneCentroid {
+export interface ZoneCentroid {
   nom: string;
   lat: number;
   lng: number;
@@ -40,17 +41,18 @@ export interface ExtractionSummary {
   ville: string;
   extraits: number;
   doublons: number;
+  incertains: number;
   nombreNouveaux: number;
-  nouveaux: ExtractionResultItem[];
+  inseres: ExtractionResultItem[];
 }
 
-function cleZonesParVille(pays: string, ville: string): string {
+export function cleZonesParVille(pays: string, ville: string): string {
   return `${pays.trim().toLowerCase()}::${ville.trim().toLowerCase()}`;
 }
 
 // Clé composite pays+ville : deux pays peuvent avoir une ville du même nom (ex. Fès/Maroc
 // vs une éventuelle ville homonyme ailleurs), donc on ne peut pas se fier au nom de ville seul.
-async function chargerZonesParVille(pool: Pool): Promise<Record<string, ZoneCentroid[]>> {
+export async function chargerZonesParVille(pool: Pool): Promise<Record<string, ZoneCentroid[]>> {
   const { rows } = await pool.query(`
     SELECT p.nom AS pays, v.nom AS ville, z.nom, z.lat, z.lng
     FROM zones z
@@ -88,14 +90,14 @@ async function chargerPlaceIdsExistants(pool: Pool): Promise<Set<string>> {
 // Les établissements saisis à la main suivent le schéma "etab-N" — on continue cette
 // numérotation pour les établissements extraits automatiquement, au lieu d'y mettre le
 // place_id Google (déjà stocké séparément dans la colonne place_id, utilisée pour le dédoublonnage).
-async function prochainNumeroEtablissement(pool: Pool): Promise<number> {
+export async function prochainNumeroEtablissement(pool: Pool): Promise<number> {
   const { rows } = await pool.query(
     `SELECT COALESCE(MAX((substring(id from '^etab-(\\d+)$'))::int), -1) + 1 AS suivant FROM etablissements`
   );
   return Number(rows[0].suivant);
 }
 
-function trouverArrondissementLePlusProche(lat: number, lng: number, pays: string, ville: string, zonesParVille: Record<string, ZoneCentroid[]>): string {
+export function trouverArrondissementLePlusProche(lat: number, lng: number, pays: string, ville: string, zonesParVille: Record<string, ZoneCentroid[]>): string {
   const centroides = zonesParVille[cleZonesParVille(pays, ville)] ?? [];
   if (centroides.length === 0) return '';
   let distanceMin = Infinity;
@@ -198,10 +200,11 @@ export async function extraireEtInserer(
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) throw new Error('GOOGLE_PLACES_API_KEY non définie.');
 
-  const [config, zonesParVille, placeIdsExistants, prochainNumero] = await Promise.all([
+  const [config, zonesParVille, placeIdsExistants, existantsDetailles, prochainNumero] = await Promise.all([
     chargerConfigSpecialite(pool, specialite),
     chargerZonesParVille(pool),
     chargerPlaceIdsExistants(pool),
+    chargerExistants(pool, specialite, ville),
     prochainNumeroEtablissement(pool),
   ]);
 
@@ -265,21 +268,50 @@ export async function extraireEtInserer(
   }
 
   const extraits = candidats.length;
-  const nouveaux = candidats.filter((c) => !placeIdsExistants.has(c.placeId));
-  const doublons = extraits - nouveaux.length;
 
-  nouveaux.forEach((etab, i) => {
+  // Deux couches de dédoublonnage : le place_id (signal exact propre à Google, court-circuite le
+  // reste) PUIS le même scoring nom/adresse/GPS que le scraping externe, contre TOUTES les fiches
+  // existantes de cette ville/catégorie — sans ça, un médecin déjà inséré via DabaDoc/Doctori/etc.
+  // (donc sans place_id) ne serait jamais reconnu par la seule comparaison de place_id, et
+  // ressortirait en double via Google Places.
+  type CandidatClasse = ExtractionResultItem & { statut: 'doublon_confirme' | 'incertain' | 'nouveau'; matchExistant: FicheExistante | null };
+  const classes: CandidatClasse[] = candidats.map((c) => {
+    if (placeIdsExistants.has(c.placeId)) {
+      return { ...c, statut: 'doublon_confirme', matchExistant: null };
+    }
+    let meilleur: FicheExistante | null = null, meilleurScore = 0;
+    for (const e of existantsDetailles) {
+      const { score } = scoreCorrespondance(e, { nom: c.nom, adresse: c.adresse, lat: c.latitude, lng: c.longitude });
+      if (score > meilleurScore) { meilleurScore = score; meilleur = e; }
+    }
+    return { ...c, statut: classifierScore(meilleurScore), matchExistant: meilleur };
+  });
+
+  const doublons = classes.filter((c) => c.statut === 'doublon_confirme');
+  const aInserer = classes.filter((c) => c.statut !== 'doublon_confirme');
+  const incertains = aInserer.filter((c) => c.statut === 'incertain');
+
+  aInserer.forEach((etab, i) => {
     etab.id = `etab-${prochainNumero + i}`;
   });
 
-  for (const etab of nouveaux) {
+  for (const etab of aInserer) {
+    const source = etab.statut === 'incertain'
+      ? `Google Maps (automatisé) — doublon possible avec ${etab.matchExistant?.id}, à vérifier`
+      : 'Google Maps (automatisé)';
     await pool.query(
       `INSERT INTO etablissements (id, nom, categorie, ville, quartier, arrondissement, adresse, latitude, longitude, source, place_id, statut)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'brouillon')
        ON CONFLICT (id) DO NOTHING`,
-      [etab.id, etab.nom, etab.categorie, etab.ville, etab.arrondissement, etab.arrondissement, etab.adresse, etab.latitude, etab.longitude, 'Google Maps (automatisé)', etab.placeId]
+      [etab.id, etab.nom, etab.categorie, etab.ville, etab.arrondissement, etab.arrondissement, etab.adresse, etab.latitude, etab.longitude, source, etab.placeId]
     );
   }
 
-  return { specialite, pays, ville, extraits, doublons, nombreNouveaux: nouveaux.length, nouveaux };
+  return {
+    specialite, pays, ville, extraits,
+    doublons: doublons.length,
+    incertains: incertains.length,
+    nombreNouveaux: aInserer.length - incertains.length,
+    inseres: aInserer,
+  };
 }

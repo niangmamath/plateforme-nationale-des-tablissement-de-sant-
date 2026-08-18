@@ -1,0 +1,59 @@
+name: Extraction établissements (Google Maps + DabaDoc, Doctori.ma, Télécontact, Med.ma)
+
+# Lance, pour chaque combinaison ville/catégorie, Google Maps PUIS le scraping externe — les deux
+# passent par le même dédoublonnage nom/adresse/GPS contre la base (server/scraping/dedup.ts), donc
+# un établissement trouvé par l'un est reconnu comme doublon par l'autre. Voir server/scraping/
+# run-cible.ts et run-generalisation.ts.
+#
+# Deux déclencheurs :
+# - workflow_dispatch : lancement manuel (onglet Actions, ou appel API — utilisé par le Flow
+#   Directus "Extraction établissements" pour un rafraîchissement ciblé ville/catégorie). Ville et
+#   catégorie vides = balayage complet des 6 villes x 7 catégories couvertes par le scraping externe
+#   (voir server/scraping/config.ts ; Clinique Privée exclue de cette liste — aucune source externe
+#   fiable pour cette catégorie, elle passe alors par Google Maps seul).
+# - schedule : rafraîchissement mensuel automatique (ces annuaires évoluent lentement).
+#
+# Ne tourne jamais sur Vercel : Selenium (Med.ma) a besoin d'un vrai Chrome, incompatible avec les
+# fonctions serverless — ce runner GitHub Actions (déjà utilisé pour les tests e2e, voir e2e.yml)
+# s'y prête nativement. Insertion toujours en statut "brouillon" : aucune publication automatique,
+# revue manuelle dans Directus quelle que soit la source.
+on:
+  workflow_dispatch:
+    inputs:
+      ville:
+        description: 'Ville ciblée (vide = les 6 villes)'
+        required: false
+      categorie:
+        description: 'Catégorie ciblée (vide = les 7 catégories couvertes)'
+        required: false
+  schedule:
+    - cron: '0 3 1 * *'
+
+jobs:
+  scraping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Installer Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Scraping ciblé (ville + catégorie fournies)
+        if: github.event_name == 'workflow_dispatch' && inputs.ville != '' && inputs.categorie != ''
+        run: npx tsx server/scraping/run-cible.ts "${{ inputs.ville }}" "${{ inputs.categorie }}"
+
+      - name: Scraping complet (6 villes x 7 catégories)
+        if: github.event_name != 'workflow_dispatch' || inputs.ville == '' || inputs.categorie == ''
+        run: npx tsx server/scraping/run-generalisation.ts
