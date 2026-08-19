@@ -137,7 +137,10 @@ describe('Filtres', () => {
 
     const ids = await getRenderedEtablissementIds(driver);
     const countApres = await getResultCount(driver);
-    expect(ids.length).toBe(countApres);
+    // Liste virtualisée (voir getRenderedEtablissementIds) : ids.length <= countApres, jamais une
+    // égalité stricte dès que le résultat filtré dépasse la hauteur du panneau.
+    expect(ids.length).toBeGreaterThan(0);
+    expect(ids.length).toBeLessThanOrEqual(countApres);
     expect(countApres).toBeLessThanOrEqual(countAvant);
     expect(secondeOption).not.toBe('');
   });

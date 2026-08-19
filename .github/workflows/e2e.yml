@@ -19,6 +19,11 @@ jobs:
     timeout-minutes: 20
     env:
       TEST_BASE_URL: ${{ github.event.deployment_status.target_url || 'https://empower-doctor.vercel.app' }}
+      # Sans ça, l'URL de déploiement par commit (target_url) redirige vers le SSO Vercel — voir
+      # tests/e2e/env.ts. À générer dans Vercel > Project Settings > Deployment Protection >
+      # "Protection Bypass for Automation", puis coller la valeur dans les secrets du repo GitHub
+      # sous ce même nom.
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
     steps:
       - uses: actions/checkout@v4
 

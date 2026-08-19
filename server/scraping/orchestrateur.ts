@@ -117,7 +117,20 @@ export async function scraperEtInserer(pool: Pool, config: ScrapingConfig): Prom
   // ce faux signal "GPS très proche" fausserait la fusion ET le dédoublonnage contre la base, en
   // plus de produire une coordonnée trompeuse en cas d'insertion. On traite ces coordonnées comme
   // absentes ; le géocodage par adresse prend le relais plus loin.
+  //
+  // DabaDoc et Doctori.ma fournissent parfois directement un lat/lng dans leur propre réponse
+  // (voir scrapeDabaDoc/scrapeDoctori) — on leur fait confiance par défaut pour éviter un appel de
+  // géocodage inutile. Mais constaté en prod : DabaDoc a renvoyé des coordonnées au fin fond de
+  // l'Arctique et à New York, et Doctori.ma un lat/lng strictement identiques (impossible pour de
+  // vraies coordonnées) pour des médecins marocains — mauvaise donnée côté SOURCE, pas un bug de
+  // notre géocodage. Un lat/lng hors du Maroc ou avec lat === lng est donc traité comme absent,
+  // pour forcer le géocodage par adresse (fiable, voir plus bas) plutôt que d'insérer une position
+  // trompeuse telle quelle.
+  const dansLeMaroc = (lat: number, lng: number) => lat >= 20.5 && lat <= 36.5 && lng >= -17.5 && lng <= -0.5 && lat !== lng;
   const brut = brutBrut.map((f) => {
+    if (f.lat != null && f.lng != null && !dansLeMaroc(f.lat, f.lng)) {
+      return { ...f, lat: null, lng: null };
+    }
     if (centroideVille && f.lat != null && f.lng != null) {
       const distCentroide = distanceGpsMetres(f.lat, f.lng, centroideVille.lat, centroideVille.lng);
       if (distCentroide < 100) return { ...f, lat: null, lng: null };
