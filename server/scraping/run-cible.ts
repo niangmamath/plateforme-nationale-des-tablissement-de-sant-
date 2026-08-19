@@ -3,6 +3,7 @@ import { pool } from '../db';
 import { extraireEtInserer } from '../extraction';
 import { scraperEtInserer } from './orchestrateur';
 import { VILLE_SLUGS, CATEGORIE_SLUGS } from './config';
+import { notifierDirectus } from './notifier';
 
 // Lance, pour une seule combinaison ville/catégorie passée en arguments CLI
 // (`tsx run-cible.ts "Casablanca" "Ophtalmologie"`), Google Maps PUIS le scraping externe —
@@ -31,13 +32,28 @@ async function main() {
 
   const sources = CATEGORIE_SLUGS[categorie];
   const villeSlug = VILLE_SLUGS[ville];
+  let resumeScraping: Awaited<ReturnType<typeof scraperEtInserer>> | null = null;
+  let scrapingSaute = '';
   if (!sources || !villeSlug) {
-    console.log(`\n### Scraping externe — sauté ###\nAucune source de scraping externe vérifiée pour "${categorie}"/"${ville}" (couverture actuelle : ${Object.keys(CATEGORIE_SLUGS).join(', ')} × ${Object.keys(VILLE_SLUGS).join(', ')}). Seul Google Maps a tourné.`);
+    scrapingSaute = `Aucune source de scraping externe vérifiée pour "${categorie}"/"${ville}" (couverture actuelle : ${Object.keys(CATEGORIE_SLUGS).join(', ')} × ${Object.keys(VILLE_SLUGS).join(', ')}). Seul Google Maps a tourné.`;
+    console.log(`\n### Scraping externe — sauté ###\n${scrapingSaute}`);
   } else {
     console.log(`\n### Scraping externe — ${categorie}/${ville} ###`);
-    const resumeScraping = await scraperEtInserer(pool, { categorie, pays: 'Maroc', ville, villeSlug, sources });
+    resumeScraping = await scraperEtInserer(pool, { categorie, pays: 'Maroc', ville, villeSlug, sources });
     console.log('Résumé scraping externe :', resumeScraping);
   }
+
+  const totalDoublons = resumeGoogle.doublons + (resumeScraping?.doublonsConfirmes ?? 0);
+  const totalIncertains = resumeGoogle.incertains + (resumeScraping?.incertains ?? 0);
+  const totalNouveaux = resumeGoogle.nombreNouveaux + (resumeScraping?.nouveaux ?? 0);
+  await notifierDirectus(
+    `Extraction terminée : ${categorie} / ${ville}`,
+    `**${totalNouveaux + totalIncertains} fiches ajoutées en brouillon** sur ${totalNouveaux + totalIncertains + totalDoublons} candidats examinés — ${totalNouveaux} nouvelles, ${totalIncertains} à vérifier (doublon possible), ${totalDoublons} déjà connues (exclues).\n\n` +
+    `Google Maps : ${resumeGoogle.extraits} candidats, ${resumeGoogle.nombreNouveaux} nouveaux, ${resumeGoogle.incertains} à vérifier, ${resumeGoogle.doublons} déjà connus.\n` +
+    (resumeScraping
+      ? `Scraping externe : ${resumeScraping.brut} enregistrements bruts (${resumeScraping.fusionnes} après fusion), ${resumeScraping.nouveaux} nouveaux, ${resumeScraping.incertains} à vérifier, ${resumeScraping.doublonsConfirmes} déjà connus.`
+      : scrapingSaute)
+  );
 
   await pool.end();
 }

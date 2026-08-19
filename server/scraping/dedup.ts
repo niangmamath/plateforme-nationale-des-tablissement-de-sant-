@@ -21,6 +21,26 @@ export interface ResultatCorrespondance {
   signaux: string[];
 }
 
+// Mots génériques de catégorie/type d'établissement — sans ça, "Laboratoire Saoudi" et
+// "Laboratoire LIAMS" (deux labos différents) partagent "laboratoire" et se retrouvent avec une
+// similarité de nom artificiellement élevée alors que rien de spécifique à la personne/enseigne
+// ne matche. Purement des mots-catégorie du domaine (établissements de santé), pas des noms.
+const MOTS_GENERIQUES = new Set([
+  'cabinet', 'centre', 'clinique', 'medecin', 'medecine', 'generale', 'generaliste',
+  'chirurgien', 'chirurgie', 'dentaire', 'dentiste', 'laboratoire', 'analyses', 'medicale', 'medicales',
+  'biologie', 'ophtalmologie', 'ophtalmologue', 'ophtalmologiste', 'ophthalmologiste', 'dermatologie',
+  'dermatologue', 'radiologie', 'radiologue', 'orthopedie', 'orthopediste', 'traumatologie',
+  'traumatologue', 'esthetique', 'sante', 'maladies', 'oeil', 'yeux', 'oculaire', 'vision',
+  'prive', 'privee', 'service', 'adulte', 'adultes', 'enfant', 'enfants', 'pediatrique', 'de', 'des', 'du', 'et',
+  // Équivalents anglais rencontrés dans des fiches importées ("BIKRI DENTAL CLINIC" vs "DENTAL
+  // CLINIC" matchaient sur ces deux seuls mots) + villes couvertes (une raison sociale du type
+  // "Chirurgien Dentiste Rabat" ne devient pas apparentée à une autre fiche pour la seule raison
+  // qu'elle mentionne la même ville) + pays.
+  'dental', 'clinic', 'medical', 'general', 'laboratory', 'doctor', 'private', 'center',
+  'casablanca', 'fes', 'fez', 'kenitra', 'marrakech', 'marrakesh', 'rabat', 'sale', 'tanger', 'tangier',
+  'maroc', 'morocco',
+]);
+
 function normaliserNom(nom: string): string[] {
   return nom
     .replace(/\b(dr|dre|pr|pre|docteur|professeur|prof|mr|mme)\.?\b/gi, '')
@@ -28,7 +48,7 @@ function normaliserNom(nom: string): string[] {
     .toLowerCase()
     .replace(/[^a-z\s]/g, ' ')
     .split(/\s+/)
-    .filter(Boolean)
+    .filter((t) => t && !MOTS_GENERIQUES.has(t))
     .sort();
 }
 
@@ -68,7 +88,16 @@ function similariteJaccard(setA: Set<string>, setB: Set<string>): number {
   return intersection / union;
 }
 
-function similariteNoms(nom1: string, nom2: string): number {
+interface SimilariteNoms {
+  score: number;
+  // Jaccard/couverture seuls (mots réellement partagés) — la distance d'édition sur deux courtes
+  // chaînes sans aucun mot commun donne facilement 0.15-0.25 par pur hasard de lettres partagées
+  // ("lahata sophia" vs "asma bezzazi medical" → 0.20), un signal trop bruité pour, à lui seul,
+  // autoriser le GPS/l'adresse à compter comme corroboration (voir scoreCorrespondance).
+  chevauchementMots: number;
+}
+
+function similariteNoms(nom1: string, nom2: string): SimilariteNoms {
   const t1 = normaliserNom(nom1);
   const t2 = normaliserNom(nom2);
   const set1 = new Set(t1), set2 = new Set(t2);
@@ -84,7 +113,13 @@ function similariteNoms(nom1: string, nom2: string): number {
   const intersection = [...set1].filter((t) => set2.has(t)).length;
   const tailleMin = Math.min(set1.size, set2.size) || 1;
   const couverture = intersection / tailleMin;
-  return Math.max(jaccard, simEdition, couverture);
+  const chevauchementMots = Math.max(jaccard, couverture);
+  // La distance d'édition n'affine un score que s'il y a déjà au moins un mot commun (ex. un
+  // prénom mal orthographié dans un nom par ailleurs identique) — livrée seule, elle produit un
+  // score non nul même sans aucun mot partagé, sur la seule coïncidence de lettres communes
+  // (suffixes de patronymes marocains très fréquents comme "-aoui" : "Yahyaoui" vs "Chennaoui").
+  const score = chevauchementMots > 0 ? Math.max(chevauchementMots, simEdition) : chevauchementMots;
+  return { score, chevauchementMots };
 }
 
 export function distanceGpsMetres(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -103,7 +138,7 @@ export function scoreCorrespondance(a: FicheComparable, b: FicheComparable): Res
     return { score: 0.97, signaux: ['téléphone identique (signal décisif)'] };
   }
 
-  const simNom = similariteNoms(a.nom, b.nom);
+  const { score: simNom, chevauchementMots } = similariteNoms(a.nom, b.nom);
 
   // Un nom complet (prénom + nom) quasi-identique est déjà un signal fort à lui seul. On ne le
   // laisse pas être dilué par une adresse mal comparable (formats hétérogènes d'une source à
@@ -122,13 +157,23 @@ export function scoreCorrespondance(a: FicheComparable, b: FicheComparable): Res
   const composantes: { poids: number; similarite: number; label?: string }[] = [];
   composantes.push({ poids: 0.55, similarite: simNom });
 
-  if (a.lat != null && a.lng != null && b.lat != null && b.lng != null) {
+  // Deux cabinets différents partagent souvent le même immeuble/quartier (très courant en ville :
+  // "résidence médicale", polyclinique) — le GPS ou l'adresse seuls ne prouvent donc jamais que
+  // c'est la même personne. Ils ne comptent que comme signal CORROBORANT un nom qui partage déjà
+  // un minimum de MOTS réels (chevauchementMots, pas simNom) — la distance d'édition seule sur de
+  // courtes chaînes sans aucun mot commun donne facilement 0.15-0.25 par pur hasard de lettres
+  // partagées ("lahata sophia" vs "asma bezzazi medical" → 0.20), trop bruitée pour ce rôle de
+  // garde-fou (constaté empiriquement : deux médecins sans aucun rapport passaient "incertain"
+  // sur le seul GPS avant ce correctif).
+  const nomAssezProcheePourCorroborer = chevauchementMots >= 0.15;
+
+  if (nomAssezProcheePourCorroborer && a.lat != null && a.lng != null && b.lat != null && b.lng != null) {
     const dist = distanceGpsMetres(a.lat, a.lng, b.lat, b.lng);
     const simGps = dist < 40 ? 1 : dist < 150 ? 0.7 : dist < 400 ? 0.3 : 0;
     composantes.push({ poids: 0.3, similarite: simGps, label: `GPS à ${Math.round(dist)}m` });
   }
 
-  if (a.adresse && b.adresse) {
+  if (nomAssezProcheePourCorroborer && a.adresse && b.adresse) {
     const simAdr = similariteJaccard(new Set(normaliserAdresse(a.adresse)), new Set(normaliserAdresse(b.adresse)));
     composantes.push({ poids: 0.2, similarite: simAdr, label: `adresse (${simAdr.toFixed(2)})` });
   }

@@ -152,15 +152,15 @@ export async function scraperEtInserer(pool: Pool, config: ScrapingConfig): Prom
     const id = `etab-${numero}`;
     numero += 1;
 
-    const sourceLabel = candidat.statut === 'incertain'
-      ? `Scraping externe (${candidat.sources.join(', ')}) — doublon possible avec ${candidat.matchExistant?.id}, à vérifier`
-      : `Scraping externe (${candidat.sources.join(', ')})`;
-
     await pool.query(
-      `INSERT INTO etablissements (id, nom, categorie, ville, quartier, arrondissement, adresse, latitude, longitude, source, statut)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'brouillon')
+      `INSERT INTO etablissements (id, nom, categorie, ville, quartier, arrondissement, adresse, latitude, longitude, source, statut, verification_requise, doublon_possible_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'brouillon',$11,$12)
        ON CONFLICT (id) DO NOTHING`,
-      [id, candidat.nom, config.categorie, config.ville, arrondissement, arrondissement, candidat.adresse ?? '', lat, lng, sourceLabel]
+      [
+        id, candidat.nom, config.categorie, config.ville, arrondissement, arrondissement, candidat.adresse ?? '', lat, lng,
+        `Scraping externe (${candidat.sources.join(', ')})`,
+        candidat.statut === 'incertain', candidat.statut === 'incertain' ? candidat.matchExistant?.id ?? null : null,
+      ]
     );
   }
 

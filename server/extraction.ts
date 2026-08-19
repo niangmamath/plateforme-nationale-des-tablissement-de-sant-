@@ -296,14 +296,15 @@ export async function extraireEtInserer(
   });
 
   for (const etab of aInserer) {
-    const source = etab.statut === 'incertain'
-      ? `Google Maps (automatisé) — doublon possible avec ${etab.matchExistant?.id}, à vérifier`
-      : 'Google Maps (automatisé)';
     await pool.query(
-      `INSERT INTO etablissements (id, nom, categorie, ville, quartier, arrondissement, adresse, latitude, longitude, source, place_id, statut)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'brouillon')
+      `INSERT INTO etablissements (id, nom, categorie, ville, quartier, arrondissement, adresse, latitude, longitude, source, place_id, statut, verification_requise, doublon_possible_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'brouillon',$12,$13)
        ON CONFLICT (id) DO NOTHING`,
-      [etab.id, etab.nom, etab.categorie, etab.ville, etab.arrondissement, etab.arrondissement, etab.adresse, etab.latitude, etab.longitude, source, etab.placeId]
+      [
+        etab.id, etab.nom, etab.categorie, etab.ville, etab.arrondissement, etab.arrondissement, etab.adresse, etab.latitude, etab.longitude,
+        'Google Maps (automatisé)', etab.placeId,
+        etab.statut === 'incertain', etab.statut === 'incertain' ? etab.matchExistant?.id ?? null : null,
+      ]
     );
   }
 
