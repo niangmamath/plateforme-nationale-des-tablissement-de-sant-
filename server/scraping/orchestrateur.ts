@@ -8,7 +8,7 @@ import {
   prochainNumeroEtablissement,
 } from '../extraction';
 import { scrapeDabaDoc, scrapeDoctori, scrapeTelecontact, scrapeMedMa, scrapeMedicalis } from './sources';
-import { fusionnerParScore, classifierContreExistants, distanceGpsMetres, chargerExistants } from './dedup';
+import { fusionnerParScore, classifierContreExistants, distanceGpsMetres, chargerExistants, chargerExistantsAutresCategories } from './dedup';
 import type { CategorieSlugs } from './config';
 
 export interface ScrapingConfig {
@@ -95,8 +95,9 @@ export async function scraperEtInserer(pool: Pool, config: ScrapingConfig): Prom
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) throw new Error('GOOGLE_PLACES_API_KEY non définie (nécessaire pour géocoder les adresses sans coordonnées).');
 
-  const [existants, zonesParVille, prochainNumero] = await Promise.all([
+  const [existants, existantsAutresCategories, zonesParVille, prochainNumero] = await Promise.all([
     chargerExistants(pool, config.categorie, config.ville),
+    chargerExistantsAutresCategories(pool, config.categorie, config.ville),
     chargerZonesParVille(pool),
     prochainNumeroEtablissement(pool),
   ]);
@@ -127,7 +128,7 @@ export async function scraperEtInserer(pool: Pool, config: ScrapingConfig): Prom
   const fusionnes = fusionnerParScore(brut);
   console.log(`Après fusion multi-sources : ${fusionnes.length} entités distinctes`);
 
-  const resultats = classifierContreExistants(fusionnes, existants);
+  const resultats = classifierContreExistants(fusionnes, existants, existantsAutresCategories);
   const doublons = resultats.filter((r) => r.statut === 'doublon_confirme');
   const aInserer = resultats.filter((r) => r.statut !== 'doublon_confirme');
 

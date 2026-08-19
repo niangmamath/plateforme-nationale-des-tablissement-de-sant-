@@ -41,6 +41,35 @@ const MOTS_GENERIQUES = new Set([
   'maroc', 'morocco',
 ]);
 
+// Mots d'institution/enseigne — servent à distinguer une fiche "personne" (un médecin identifié
+// par son nom propre) d'une fiche "établissement/marque" (une clinique, un labo...). Le
+// dédoublonnage inter-catégories (voir estNomPersonnel plus bas) n'est fiable QUE pour les fiches
+// personne : deux médecins de spécialités différentes mais de même nom, à la même adresse, sont
+// presque sûrement la même personne scrapée deux fois (constaté en prod : un scrape "Médecin
+// Généraliste" avait réaspiré des dizaines de spécialistes déjà en base sous leur vraie
+// catégorie). Mais une "Clinique X" et un "Centre de Radiologie X" qui partagent une enseigne
+// peuvent très bien être deux services distincts du même établissement, pas un doublon à fusionner
+// — impossible à trancher de façon fiable par nom+GPS seuls, donc on n'y touche pas.
+const MOTS_INSTITUTION = new Set([
+  'centre', 'clinique', 'cabinet', 'laboratoire', 'polyclinique', 'hopital', 'chu', 'dispensaire',
+  'pharmacie', 'institut', 'residence', 'clinic', 'center', 'laboratory', 'hospital', 'pharmacy',
+  'radiologie', 'radiology', 'imagerie',
+]);
+
+// Beaucoup de cabinets individuels sont nommés "Cabinet de Dermatologie - Dr X Y" ou "Centre
+// Dentaire Y - Dr Z" : la présence d'un mot d'institution en préfixe ne veut pas dire que c'est
+// une enseigne à plusieurs praticiens — dès qu'un titre (Dr/Pr) est suivi d'un nom propre, on sait
+// qu'il y a UN médecin identifié derrière, quel que soit le préfixe. Ce n'est qu'en l'ABSENCE d'un
+// tel titre qu'on retombe sur la liste de mots d'institution pour trancher.
+const TITRE_SUIVI_DUN_NOM = /\b(dr|dre|pr|pre|docteur|professeur|prof)\.?\s+[a-z]{2,}(\s+[a-z]{2,}){0,3}/;
+
+export function estNomPersonnel(nom: string): boolean {
+  const normalise = nom.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  if (TITRE_SUIVI_DUN_NOM.test(normalise)) return true;
+  const tokens = normalise.replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean);
+  return !tokens.some((t) => MOTS_INSTITUTION.has(t));
+}
+
 function normaliserNom(nom: string): string[] {
   return nom
     .replace(/\b(dr|dre|pr|pre|docteur|professeur|prof|mr|mme)\.?\b/gi, '')
@@ -266,6 +295,17 @@ export async function chargerExistants(pool: Pool, categorie: string, ville: str
   return rows;
 }
 
+// Fiches d'AUTRES catégories, même ville, pré-filtrées aux noms de personne (voir
+// estNomPersonnel) — n'inclut jamais de clinique/labo/centre, pour ne comparer entre catégories
+// que ce qui peut être comparé sans ambiguïté : un médecin avec un médecin.
+export async function chargerExistantsAutresCategories(pool: Pool, categorie: string, ville: string): Promise<FicheExistante[]> {
+  const { rows } = await pool.query(
+    `SELECT id, nom, adresse, latitude AS lat, longitude AS lng FROM etablissements WHERE categorie != $1 AND ville = $2`,
+    [categorie, ville]
+  );
+  return rows.filter((r) => estNomPersonnel(r.nom));
+}
+
 export interface ResultatClassification extends FicheFusionnee {
   statut: StatutCorrespondance;
   meilleurScore: number;
@@ -273,10 +313,19 @@ export interface ResultatClassification extends FicheFusionnee {
   signaux: string[];
 }
 
-export function classifierContreExistants(candidats: FicheFusionnee[], existants: FicheExistante[]): ResultatClassification[] {
+export function classifierContreExistants(
+  candidats: FicheFusionnee[],
+  existants: FicheExistante[],
+  existantsAutresCategories: FicheExistante[] = []
+): ResultatClassification[] {
   return candidats.map((f) => {
+    // La comparaison inter-catégories ne s'applique qu'aux candidats "personne" — voir
+    // estNomPersonnel : le pool existantsAutresCategories est déjà filtré côté chargement, mais il
+    // faut aussi que LE CANDIDAT lui-même soit un nom de personne pour que le rapprochement ait un
+    // sens (sinon une "Clinique X" pourrait matcher à tort un "Dr X" d'une autre spécialité).
+    const pool = estNomPersonnel(f.nom) ? [...existants, ...existantsAutresCategories] : existants;
     let meilleur: FicheExistante | null = null, meilleurScore = 0, signauxRetenus: string[] = [];
-    for (const e of existants) {
+    for (const e of pool) {
       const { score, signaux } = scoreCorrespondance(e, f);
       if (score > meilleurScore) { meilleurScore = score; meilleur = e; signauxRetenus = signaux; }
     }

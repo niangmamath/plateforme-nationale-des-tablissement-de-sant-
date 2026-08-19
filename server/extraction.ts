@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { chargerExistants, scoreCorrespondance, classifierScore, type FicheExistante } from './scraping/dedup';
+import { chargerExistants, chargerExistantsAutresCategories, scoreCorrespondance, classifierScore, estNomPersonnel, type FicheExistante } from './scraping/dedup';
 
 interface SpecialiteExtractionConfig {
   requete: string;
@@ -200,11 +200,12 @@ export async function extraireEtInserer(
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) throw new Error('GOOGLE_PLACES_API_KEY non définie.');
 
-  const [config, zonesParVille, placeIdsExistants, existantsDetailles, prochainNumero] = await Promise.all([
+  const [config, zonesParVille, placeIdsExistants, existantsDetailles, existantsAutresCategories, prochainNumero] = await Promise.all([
     chargerConfigSpecialite(pool, specialite),
     chargerZonesParVille(pool),
     chargerPlaceIdsExistants(pool),
     chargerExistants(pool, specialite, ville),
+    chargerExistantsAutresCategories(pool, specialite, ville),
     prochainNumeroEtablissement(pool),
   ]);
 
@@ -285,8 +286,12 @@ export async function extraireEtInserer(
       classes.push({ ...c, statut: 'doublon_confirme', matchExistant: null });
       continue;
     }
+    // Comparaison inter-catégories (voir chargerExistantsAutresCategories) uniquement quand le
+    // candidat lui-même est un nom de personne — une clinique/labo ne doit jamais être comparée
+    // à un médecin d'une autre spécialité, trop ambigu pour être tranché par nom+GPS seuls.
+    const poolElargi = estNomPersonnel(c.nom) ? [...poolComparaison, ...existantsAutresCategories] : poolComparaison;
     let meilleur: FicheExistante | null = null, meilleurScore = 0;
-    for (const e of poolComparaison) {
+    for (const e of poolElargi) {
       const { score } = scoreCorrespondance(e, { nom: c.nom, adresse: c.adresse, lat: c.latitude, lng: c.longitude });
       if (score > meilleurScore) { meilleurScore = score; meilleur = e; }
     }
