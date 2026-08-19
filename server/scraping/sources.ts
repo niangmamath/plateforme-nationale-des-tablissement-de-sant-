@@ -104,19 +104,29 @@ export async function scrapeMedMa(driver: WebDriver, specialite: string, villeSl
 // praticien (ex. "Centres-Ophtalmologie" ne liste que des cliniques, pas des ophtalmologues
 // individuels) — categorieSlug doit alors être omis à l'appel côté orchestrateur pour cette
 // spécialité, plutôt que de polluer les candidats "praticien individuel" avec des cliniques.
+//
+// Deux gabarits de fiche coexistent sur une même page de liste (constaté en testant le scraper,
+// le sélecteur `.divinfo` d'origine ne correspondait plus à rien après une refonte du site) :
+// "inscrit" (profil revendiqué : nom dans .nomprenominscrit, adresse dans address.adressinscrit
+// — parfois tronquée par le site lui-même avec "...", téléphone dans un span caché
+// [id^=telephoneFirmeDisplay]) et "client" (fiche basique non revendiquée : nom dans
+// .nomprenomclient seulement, jamais d'adresse ni de téléphone). Les deux partagent le même
+// conteneur `.listing.vertical`.
 export async function scrapeMedicalis(driver: WebDriver, categorieSlug: string, ville: string, codeVille: string): Promise<FicheScrapee[]> {
   const url = `https://medicalis.ma/liste/${encodeURIComponent(categorieSlug)}/${ville}/Maroc/${codeVille}`;
   await driver.get(url);
   await driver.sleep(5000);
-  const bruts: { nom: string; adresse: string | null }[] = await driver.executeScript(`
-    return Array.from(document.querySelectorAll('.divinfo')).map(card => {
-      const nomEl = card.querySelector('.nomprenom a');
-      const adresseEl = card.querySelector('.address');
+  const bruts: { nom: string; adresse: string | null; telephone: string | null }[] = await driver.executeScript(`
+    return Array.from(document.querySelectorAll('.listing.vertical')).map(card => {
+      const nomEl = card.querySelector('.nomprenominscrit a, .nomprenomclient a');
+      const adresseEl = card.querySelector('address.adressinscrit');
+      const telEl = card.querySelector('[id^="telephoneFirmeDisplay"]');
       return {
         nom: nomEl ? nomEl.textContent.trim() : null,
         adresse: adresseEl ? adresseEl.textContent.trim().replace(/\\s+/g, ' ') : null,
+        telephone: telEl ? telEl.textContent.trim() : null,
       };
     }).filter(r => r.nom);
   `);
-  return bruts.map((r) => ({ ...r, telephone: null, lat: null, lng: null, source: 'Medicalis.ma' }));
+  return bruts.map((r) => ({ ...r, lat: null, lng: null, source: 'Medicalis.ma' }));
 }
