@@ -48,7 +48,12 @@ function normaliserNom(nom: string): string[] {
     .toLowerCase()
     .replace(/[^a-z\s]/g, ' ')
     .split(/\s+/)
-    .filter((t) => t && !MOTS_GENERIQUES.has(t))
+    // Une apostrophe ("d'Ophtalmologie", "l'oeil") laisse un résidu d'une seule lettre après le
+    // découpage — jamais un mot porteur de sens, mais qui matchait à tort dès qu'il restait seul
+    // des deux côtés (ex. "Cabinet d'ophtalmologie" réduit à ce seul "d" après filtrage des mots
+    // génériques, puis "détecté" comme identique à n'importe quel autre nom contenant une
+    // apostrophe). Un vrai nom/prénom fait toujours au moins 2 lettres.
+    .filter((t) => t.length >= 2 && !MOTS_GENERIQUES.has(t))
     .sort();
 }
 
@@ -113,7 +118,13 @@ function similariteNoms(nom1: string, nom2: string): SimilariteNoms {
   const intersection = [...set1].filter((t) => set2.has(t)).length;
   const tailleMin = Math.min(set1.size, set2.size) || 1;
   const couverture = intersection / tailleMin;
-  const chevauchementMots = Math.max(jaccard, couverture);
+  // La couverture (containment) vaut 1.0 dès que le nom le plus court est entièrement inclus dans
+  // l'autre — fiable quand ce nom court a plusieurs mots (ex. "Dr Chama Daoudi" dans un nom plus
+  // long), mais trompeur s'il ne reste qu'UN seul mot après filtrage des génériques : ce mot peut
+  // tout aussi bien être un nom de quartier ("Maarif", "Bab Doukkala") qu'un vrai patronyme — rien
+  // ne les distingue structurellement. Dans ce cas on retombe sur Jaccard seul, mécaniquement
+  // pénalisé par la taille du nom le plus long (ne "gagne" jamais 1.0 sur un seul mot partagé).
+  const chevauchementMots = tailleMin >= 2 ? Math.max(jaccard, couverture) : jaccard;
   // La distance d'édition n'affine un score que s'il y a déjà au moins un mot commun (ex. un
   // prénom mal orthographié dans un nom par ailleurs identique) — livrée seule, elle produit un
   // score non nul même sans aucun mot partagé, sur la seule coïncidence de lettres communes
@@ -142,12 +153,17 @@ export function scoreCorrespondance(a: FicheComparable, b: FicheComparable): Res
 
   // Un nom complet (prénom + nom) quasi-identique est déjà un signal fort à lui seul. On ne le
   // laisse pas être dilué par une adresse mal comparable (formats hétérogènes d'une source à
-  // l'autre : certains sites ne donnent qu'un quartier) — sauf contradiction GPS nette, seul
-  // signal fiable à 100% de "ce n'est PAS le même endroit" quand il est disponible des 2 côtés.
+  // l'autre : certains sites ne donnent qu'un quartier) — sauf contradiction GPS, seul signal
+  // fiable de "ce n'est PAS le même endroit" quand il est disponible des 2 côtés. Seuil resserré
+  // à 400m (au lieu de 1500m) après avoir constaté en prod des dizaines de faux positifs à
+  // 400m-1,5km : un nom de quartier ("Maarif", "Agdal", "Sidi Moumen") survit souvent seul comme
+  // "mot partagé" après filtrage des mots génériques, et matche alors n'importe quel autre
+  // établissement du même quartier — liste de quartiers à exclure sans fin à maintenir, donc on
+  // se fie plutôt à la distance réelle : les vrais doublons observés sont tous sous 300m.
   if (simNom >= 0.92) {
     let contradictionGps = false;
     if (a.lat != null && a.lng != null && b.lat != null && b.lng != null) {
-      contradictionGps = distanceGpsMetres(a.lat, a.lng, b.lat, b.lng) > 1500;
+      contradictionGps = distanceGpsMetres(a.lat, a.lng, b.lat, b.lng) > 400;
     }
     if (!contradictionGps) {
       return { score: 0.9, signaux: [`nom complet quasi-identique (${simNom.toFixed(2)}, signal fort)`] };
