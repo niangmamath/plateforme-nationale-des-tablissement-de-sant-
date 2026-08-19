@@ -158,7 +158,7 @@ export async function scraperEtInserer(pool: Pool, config: ScrapingConfig): Prom
        ON CONFLICT (id) DO NOTHING`,
       [
         id, candidat.nom, config.categorie, config.ville, arrondissement, arrondissement, candidat.adresse ?? '', lat, lng,
-        `Scraping externe (${candidat.sources.join(', ')})`,
+        candidat.sources.join(', '),
         candidat.statut === 'incertain', candidat.statut === 'incertain' ? candidat.matchExistant?.id ?? null : null,
       ]
     );
