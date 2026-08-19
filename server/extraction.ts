@@ -268,32 +268,38 @@ export async function extraireEtInserer(
   }
 
   const extraits = candidats.length;
+  candidats.forEach((c, i) => { c.id = `etab-${prochainNumero + i}`; });
 
-  // Deux couches de dédoublonnage : le place_id (signal exact propre à Google, court-circuite le
-  // reste) PUIS le même scoring nom/adresse/GPS que le scraping externe, contre TOUTES les fiches
-  // existantes de cette ville/catégorie — sans ça, un médecin déjà inséré via DabaDoc/Doctori/etc.
-  // (donc sans place_id) ne serait jamais reconnu par la seule comparaison de place_id, et
-  // ressortirait en double via Google Places.
+  // Trois couches de dédoublonnage : le place_id (signal exact propre à Google, court-circuite
+  // le reste) PUIS le même scoring nom/adresse/GPS que le scraping externe — contre TOUTES les
+  // fiches existantes de cette ville/catégorie, ET contre les candidats DÉJÀ acceptés plus tôt
+  // dans CE MÊME lot. Sans ce second point, Google peut renvoyer deux fiches distinctes
+  // (place_id différents) pour le même lieu réel — ni l'une ni l'autre n'est "existante" au sens
+  // de la base, donc aucune des deux ne reconnaît l'autre comme doublon (constaté en prod : 3
+  // paires publiées en double, voir conversation).
   type CandidatClasse = ExtractionResultItem & { statut: 'doublon_confirme' | 'incertain' | 'nouveau'; matchExistant: FicheExistante | null };
-  const classes: CandidatClasse[] = candidats.map((c) => {
+  const classes: CandidatClasse[] = [];
+  const poolComparaison: FicheExistante[] = [...existantsDetailles];
+  for (const c of candidats) {
     if (placeIdsExistants.has(c.placeId)) {
-      return { ...c, statut: 'doublon_confirme', matchExistant: null };
+      classes.push({ ...c, statut: 'doublon_confirme', matchExistant: null });
+      continue;
     }
     let meilleur: FicheExistante | null = null, meilleurScore = 0;
-    for (const e of existantsDetailles) {
+    for (const e of poolComparaison) {
       const { score } = scoreCorrespondance(e, { nom: c.nom, adresse: c.adresse, lat: c.latitude, lng: c.longitude });
       if (score > meilleurScore) { meilleurScore = score; meilleur = e; }
     }
-    return { ...c, statut: classifierScore(meilleurScore), matchExistant: meilleur };
-  });
+    const statut = classifierScore(meilleurScore);
+    classes.push({ ...c, statut, matchExistant: meilleur });
+    if (statut !== 'doublon_confirme') {
+      poolComparaison.push({ id: c.id, nom: c.nom, adresse: c.adresse, lat: c.latitude, lng: c.longitude });
+    }
+  }
 
   const doublons = classes.filter((c) => c.statut === 'doublon_confirme');
   const aInserer = classes.filter((c) => c.statut !== 'doublon_confirme');
   const incertains = aInserer.filter((c) => c.statut === 'incertain');
-
-  aInserer.forEach((etab, i) => {
-    etab.id = `etab-${prochainNumero + i}`;
-  });
 
   for (const etab of aInserer) {
     await pool.query(
