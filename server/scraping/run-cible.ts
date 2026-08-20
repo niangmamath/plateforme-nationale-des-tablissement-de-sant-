@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { pool } from '../db';
 import { extraireEtInserer } from '../extraction';
 import { scraperEtInserer } from './orchestrateur';
-import { VILLE_SLUGS, CATEGORIE_SLUGS } from './config';
+import { VILLE_SLUGS, CATEGORIE_SLUGS, MEDICALIS_CODE_VILLE, MEDICALIS_CATEGORIE_SLUGS } from './config';
 import { notifierDirectus } from './notifier';
 
 // Lance, pour une seule combinaison ville/catégorie passée en arguments CLI
@@ -32,14 +32,24 @@ async function main() {
 
   const sources = CATEGORIE_SLUGS[categorie];
   const villeSlug = VILLE_SLUGS[ville];
+  const medicalisCategorieSlug = MEDICALIS_CATEGORIE_SLUGS[categorie];
+  const medicalisCodeVille = MEDICALIS_CODE_VILLE[ville];
+  const medicalis = medicalisCategorieSlug && medicalisCodeVille
+    ? { categorieSlug: medicalisCategorieSlug, codeVille: medicalisCodeVille }
+    : undefined;
   let resumeScraping: Awaited<ReturnType<typeof scraperEtInserer>> | null = null;
   let scrapingSaute = '';
-  if (!sources || !villeSlug) {
+  if (!sources && !medicalis) {
     scrapingSaute = `Aucune source de scraping externe vérifiée pour "${categorie}"/"${ville}" (couverture actuelle : ${Object.keys(CATEGORIE_SLUGS).join(', ')} × ${Object.keys(VILLE_SLUGS).join(', ')}). Seul Google Maps a tourné.`;
     console.log(`\n### Scraping externe — sauté ###\n${scrapingSaute}`);
   } else {
     console.log(`\n### Scraping externe — ${categorie}/${ville} ###`);
-    resumeScraping = await scraperEtInserer(pool, { categorie, pays: 'Maroc', ville, villeSlug, sources });
+    resumeScraping = await scraperEtInserer(pool, {
+      categorie, pays: 'Maroc', ville,
+      villeSlug: villeSlug ?? '',
+      sources: sources ?? { dabadoc: null, doctori: null, telecontact: null, medma: null },
+      medicalis,
+    });
     console.log('Résumé scraping externe :', resumeScraping);
   }
 

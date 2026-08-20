@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { pool } from '../db';
 import { extraireEtInserer, type ExtractionSummary } from '../extraction';
 import { scraperEtInserer, type ScrapingSummary } from './orchestrateur';
-import { VILLE_SLUGS, CATEGORIE_SLUGS, VILLES_CIBLES, CATEGORIES_CIBLES } from './config';
+import { VILLE_SLUGS, CATEGORIE_SLUGS, VILLES_CIBLES, CATEGORIES_CIBLES, MEDICALIS_CODE_VILLE, MEDICALIS_CATEGORIE_SLUGS } from './config';
 import { notifierDirectus } from './notifier';
 
 interface ResultatCombine {
@@ -40,12 +40,17 @@ async function main() {
         console.log('Résumé Google Maps :', resultat.google);
 
         console.log('--- Scraping externe ---');
+        const medicalisCategorieSlug = MEDICALIS_CATEGORIE_SLUGS[categorie];
+        const medicalisCodeVille = MEDICALIS_CODE_VILLE[ville];
         resultat.scraping = await scraperEtInserer(pool, {
           categorie,
           pays: 'Maroc',
           ville,
           villeSlug: VILLE_SLUGS[ville],
           sources,
+          medicalis: medicalisCategorieSlug && medicalisCodeVille
+            ? { categorieSlug: medicalisCategorieSlug, codeVille: medicalisCodeVille }
+            : undefined,
         });
         console.log('Résumé scraping externe :', resultat.scraping);
       } catch (e: any) {

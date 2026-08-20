@@ -36,3 +36,30 @@ export const CATEGORIE_SLUGS: Record<string, CategorieSlugs> = {
 
 export const VILLES_CIBLES = Object.keys(VILLE_SLUGS);
 export const CATEGORIES_CIBLES = Object.keys(CATEGORIE_SLUGS);
+
+// Medicalis.ma : schéma d'URL à part, `codeVille` n'est PAS l'indicatif téléphonique régional
+// (constaté en testant : 037/035/024/039 devinés par analogie avec les indicatifs réels
+// donnaient tous une mauvaise ville) mais un identifiant interne au site, lu directement dans le
+// menu déroulant réellement rendu par la page (peuplé en JS, invisible à un simple fetch HTML) et
+// vérifié un par un contre le site (chaque code confirmé par le nom de ville dans le <title> de la
+// page de résultats).
+export const MEDICALIS_CODE_VILLE: Record<string, string> = {
+  Casablanca: '022',
+  Fès: '034',
+  Marrakech: '054',
+  Rabat: '067',
+  Salé: '070',
+  Tanger: '080',
+};
+
+// Seules 3 catégories vérifiées manuellement comme couvrant des PRATICIENS INDIVIDUELS (testé en
+// direct sur Casablanca) : Chirurgiens-Dentistes, Médecin-généraliste et Radiologue remontent de
+// vrais noms de médecins. "Centres-Ophtalmologie" existe aussi sur le site mais ne liste QUE des
+// établissements (cliniques), pas des ophtalmologues — volontairement exclue pour ne pas polluer
+// la catégorie "Ophtalmologie" avec des enseignes. Dermatologue, Orthopédiste, Laboratoire
+// d'Analyses Médicales et Clinique Privée n'ont pas de slug correspondant trouvé sur le site.
+export const MEDICALIS_CATEGORIE_SLUGS: Record<string, string> = {
+  Dentiste: 'Chirurgiens-Dentistes',
+  'Médecin Généraliste': 'Médecin-généraliste',
+  Radiologue: 'Radiologue',
+};
