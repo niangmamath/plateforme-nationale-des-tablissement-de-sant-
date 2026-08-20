@@ -172,9 +172,16 @@ export async function scraperEtInserer(pool: Pool, config: ScrapingConfig): Prom
     let lat = candidat.lat, lng = candidat.lng;
     if (lat == null || lng == null) {
       const geo = await geocoderAdresse(candidat.nom, candidat.adresse, config.ville, config.pays, apiKey);
-      if (!geo) {
+      // Le garde-fou plus haut (dansLeMaroc) ne validait que les coordonnées fournies telles
+      // quelles par la source — pas le résultat de NOTRE PROPRE géocodage. Constaté en prod :
+      // Google Geocoding a renvoyé le Bangladesh pour une adresse à Mediouna (Casablanca), et le
+      // Qatar pour une adresse contenant "Doha" comme nom de quartier marocain — une requête mal
+      // formée ou ambiguë peut faire dériver la recherche n'importe où dans le monde, pas
+      // seulement échouer proprement. Même validation qu'à la ligne ~140, appliquée cette fois au
+      // résultat du géocodage plutôt qu'à l'entrée.
+      if (!geo || !dansLeMaroc(geo.lat, geo.lng)) {
         geocodageEchecs.push(candidat.nom);
-        continue; // pas de coordonnées = pas d'insertion possible (latitude/longitude NOT NULL)
+        continue; // pas de coordonnées fiables = pas d'insertion possible (latitude/longitude NOT NULL)
       }
       lat = geo.lat;
       lng = geo.lng;
