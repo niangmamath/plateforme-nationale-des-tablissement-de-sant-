@@ -3,7 +3,7 @@ import { pool } from '../db';
 import { extraireEtInserer } from '../extraction';
 import { scraperEtInserer } from './orchestrateur';
 import { VILLE_SLUGS, CATEGORIE_SLUGS, MEDICALIS_CODE_VILLE, MEDICALIS_CATEGORIE_SLUGS } from './config';
-import { notifierDirectus } from './notifier';
+import { notifierDirectus, formatStatsParSource } from './notifier';
 
 // Lance, pour une seule combinaison ville/catégorie passée en arguments CLI
 // (`tsx run-cible.ts "Casablanca" "Ophtalmologie"`), Google Maps PUIS le scraping externe —
@@ -59,6 +59,7 @@ async function main() {
   await notifierDirectus(
     `Extraction terminée : ${categorie} / ${ville}`,
     `**${totalNouveaux + totalIncertains} fiches ajoutées en brouillon** sur ${totalNouveaux + totalIncertains + totalDoublons} candidats examinés — ${totalNouveaux} nouvelles, ${totalIncertains} à vérifier (doublon possible), ${totalDoublons} déjà connues (exclues).\n\n` +
+    `Par source : ${formatStatsParSource(resumeGoogle.extraits, resumeScraping?.parSource)}\n\n` +
     `Google Maps : ${resumeGoogle.extraits} candidats, ${resumeGoogle.nombreNouveaux} nouveaux, ${resumeGoogle.incertains} à vérifier, ${resumeGoogle.doublons} déjà connus.\n` +
     (resumeScraping
       ? `Scraping externe : ${resumeScraping.brut} enregistrements bruts (${resumeScraping.fusionnes} après fusion), ${resumeScraping.nouveaux} nouveaux, ${resumeScraping.incertains} à vérifier, ${resumeScraping.doublonsConfirmes} déjà connus.`

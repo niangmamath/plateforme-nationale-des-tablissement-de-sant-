@@ -3,7 +3,7 @@ import { pool } from '../db';
 import { extraireEtInserer, type ExtractionSummary } from '../extraction';
 import { scraperEtInserer, type ScrapingSummary } from './orchestrateur';
 import { VILLE_SLUGS, CATEGORIE_SLUGS, VILLES_CIBLES, CATEGORIES_CIBLES, MEDICALIS_CODE_VILLE, MEDICALIS_CATEGORIE_SLUGS } from './config';
-import { notifierDirectus } from './notifier';
+import { notifierDirectus, formatStatsParSource } from './notifier';
 
 interface ResultatCombine {
   categorie: string;
@@ -64,6 +64,8 @@ async function main() {
   console.log('\n\n================ RÉCAPITULATIF GÉNÉRAL ================');
   let totalDoublons = 0, totalIncertains = 0, totalNouveaux = 0;
   let googleNouveaux = 0, googleIncertains = 0, scrapingNouveaux = 0, scrapingIncertains = 0;
+  let googleExtraitsTotal = 0;
+  const parSourceTotal: Record<string, number> = {};
   const erreurs: string[] = [];
   for (const r of resultats) {
     const g = r.google;
@@ -81,6 +83,10 @@ async function main() {
     googleIncertains += g?.incertains ?? 0;
     scrapingNouveaux += s?.nouveaux ?? 0;
     scrapingIncertains += s?.incertains ?? 0;
+    googleExtraitsTotal += g?.extraits ?? 0;
+    for (const [source, n] of Object.entries(s?.parSource ?? {})) {
+      parSourceTotal[source] = (parSourceTotal[source] ?? 0) + n;
+    }
     if (r.erreur) erreurs.push(`${r.categorie}/${r.ville} : ${r.erreur}`);
   }
   console.log(`\nTotal (Google Maps + scraping externe) : ${totalDoublons} doublons confirmés, ${totalIncertains} incertains, ${totalNouveaux} nouveaux sur ${resultats.length} combinaisons.`);
@@ -88,8 +94,9 @@ async function main() {
   await notifierDirectus(
     `Balayage complet terminé : ${totalNouveaux + totalIncertains} fiches ajoutées`,
     `**${totalNouveaux + totalIncertains} fiches ajoutées en brouillon** sur ${resultats.length} combinaisons ville × catégorie (${totalNouveaux} nouvelles, ${totalIncertains} à vérifier, ${totalDoublons} déjà connues, exclues).\n\n` +
+    `Par source (candidats bruts trouvés, toutes combinaisons cumulées) : ${formatStatsParSource(googleExtraitsTotal, parSourceTotal)}\n\n` +
     `Google Maps : ${googleNouveaux} nouvelles, ${googleIncertains} à vérifier.\n` +
-    `Scraping externe (DabaDoc, Doctori.ma, Télécontact, Med.ma) : ${scrapingNouveaux} nouvelles, ${scrapingIncertains} à vérifier.` +
+    `Scraping externe (DabaDoc, Doctori.ma, Télécontact/PagesJaunes, Med.ma, Medicalis.ma) : ${scrapingNouveaux} nouvelles, ${scrapingIncertains} à vérifier.` +
     (erreurs.length > 0 ? `\n\n⚠️ ${erreurs.length} combinaison(s) en erreur :\n${erreurs.join('\n')}` : '')
   );
 

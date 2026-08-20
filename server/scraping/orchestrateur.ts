@@ -8,7 +8,7 @@ import {
   prochainNumeroEtablissement,
 } from '../extraction';
 import { scrapeDabaDoc, scrapeDoctori, scrapeTelecontact, scrapeMedMa, scrapeMedicalis } from './sources';
-import { fusionnerParScore, classifierContreExistants, distanceGpsMetres, chargerExistants, chargerExistantsAutresCategories } from './dedup';
+import { fusionnerParScore, classifierContreExistants, distanceGpsMetres, chargerExistants, chargerExistantsAutresCategories, type FicheScrapee } from './dedup';
 import type { CategorieSlugs } from './config';
 
 export interface ScrapingConfig {
@@ -17,9 +17,12 @@ export interface ScrapingConfig {
   ville: string;
   villeSlug: string;
   sources: CategorieSlugs;
-  // Optionnel : Medicalis.ma a un schéma d'URL à part (indicatif téléphonique régional au lieu
-  // d'un slug de ville) et une couverture trop inégale par catégorie pour être généralisée sans
-  // vérification ville par ville — voir conversation. Omis par défaut, activable au cas par cas.
+  // Optionnel : Medicalis.ma a un schéma d'URL à part (un identifiant de ville interne au site,
+  // pas l'indicatif téléphonique régional — voir MEDICALIS_CODE_VILLE dans config.ts) et sa
+  // couverture par catégorie est trop inégale pour être généralisée sans vérification manuelle
+  // (certaines catégories du site ne listent que des cliniques, pas des praticiens individuels).
+  // run-cible.ts et run-generalisation.ts ne le renseignent que pour les 3 catégories vérifiées
+  // (MEDICALIS_CATEGORIE_SLUGS) ; absent pour les autres.
   medicalis?: { categorieSlug: string; codeVille: string };
 }
 
@@ -27,6 +30,7 @@ export interface ScrapingSummary {
   categorie: string;
   ville: string;
   brut: number;
+  parSource: Record<string, number>;
   fusionnes: number;
   doublonsConfirmes: number;
   incertains: number;
@@ -56,7 +60,7 @@ async function geocoderAdresse(nom: string, adresse: string | null | undefined, 
   return { lat: loc.lat, lng: loc.lng };
 }
 
-async function scraperToutesSources(config: ScrapingConfig) {
+async function scraperToutesSources(config: ScrapingConfig): Promise<{ enregistrements: FicheScrapee[]; parSource: Record<string, number> }> {
   const { dabadoc, doctori, telecontact, medma } = config.sources;
 
   console.log(`Scraping HTTP pour ${config.categorie}/${config.ville}...`);
@@ -83,7 +87,14 @@ async function scraperToutesSources(config: ScrapingConfig) {
     console.log(`  Med.ma=${medma ? medmaR.length : '—'}${config.medicalis ? `, Medicalis.ma=${medicalisR.length}` : ''}`);
   }
 
-  return [...dabaR, ...doctoriR, ...tcR, ...medmaR, ...medicalisR];
+  const parSource: Record<string, number> = {};
+  if (dabadoc) parSource['DabaDoc'] = dabaR.length;
+  if (doctori) parSource['Doctori.ma'] = doctoriR.length;
+  if (telecontact) parSource['Télécontact / PagesJaunes'] = tcR.length;
+  if (medma) parSource['Med.ma'] = medmaR.length;
+  if (config.medicalis) parSource['Medicalis.ma'] = medicalisR.length;
+
+  return { enregistrements: [...dabaR, ...doctoriR, ...tcR, ...medmaR, ...medicalisR], parSource };
 }
 
 // Scrape les sources externes (hors Google Maps), fusionne, dédoublonne contre la base, géocode
@@ -108,7 +119,7 @@ export async function scraperEtInserer(pool: Pool, config: ScrapingConfig): Prom
 
   const centroideVille = await chargerCentroideVille(pool, config.ville);
 
-  const brutBrut = await scraperToutesSources(config);
+  const { enregistrements: brutBrut, parSource } = await scraperToutesSources(config);
   console.log(`Total brut, toutes sources confondues : ${brutBrut.length} enregistrements`);
 
   // Certaines sources (constaté sur DabaDoc) retournent, pour des fiches mal géocodées de leur
@@ -182,6 +193,7 @@ export async function scraperEtInserer(pool: Pool, config: ScrapingConfig): Prom
     categorie: config.categorie,
     ville: config.ville,
     brut: brut.length,
+    parSource,
     fusionnes: fusionnes.length,
     doublonsConfirmes: doublons.length,
     incertains: resultats.filter((r) => r.statut === 'incertain').length,
