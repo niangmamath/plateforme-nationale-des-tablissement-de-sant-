@@ -8,7 +8,7 @@ import {
   prochainNumeroEtablissement,
 } from '../extraction';
 import { scrapeDabaDoc, scrapeDoctori, scrapeTelecontact, scrapeMedMa, scrapeMedicalis } from './sources';
-import { fusionnerParScore, classifierContreExistants, distanceGpsMetres, chargerExistants, chargerExistantsAutresCategories, type FicheScrapee } from './dedup';
+import { fusionnerParScore, classifierContreExistants, distanceGpsMetres, chargerExistants, chargerExistantsAutresCategories, scoreCorrespondance, SEUIL_DOUBLON_CONFIRME, type FicheScrapee } from './dedup';
 import type { CategorieSlugs } from './config';
 
 export interface ScrapingConfig {
@@ -160,6 +160,13 @@ export async function scraperEtInserer(pool: Pool, config: ScrapingConfig): Prom
 
   const geocodageEchecs: string[] = [];
   let numero = prochainNumero;
+  // Fiches "nouveau" tout juste insérées, coordonnées définitives (post-géocodage) — voir le
+  // rattrapage anti-doublon plus bas : c'est justement pour CES fiches que fusionnerParScore, plus
+  // haut, tourne à l'aveugle côté GPS (Télécontact/Med.ma/Medicalis ne fournissent jamais leurs
+  // propres coordonnées, donc la comparaison intra-lot se fait sans ce signal tant que le
+  // géocodage n'a pas eu lieu). Les fiches "incertain" ont déjà un doublon_possible_id à trancher
+  // manuellement, pas besoin de les revérifier ici.
+  const nouveauxInseres: { id: string; nom: string; adresse: string | null; lat: number; lng: number }[] = [];
 
   for (const candidat of aInserer) {
     let lat = candidat.lat, lng = candidat.lng;
@@ -187,6 +194,15 @@ export async function scraperEtInserer(pool: Pool, config: ScrapingConfig): Prom
         candidat.statut === 'incertain', candidat.statut === 'incertain' ? candidat.matchExistant?.id ?? null : null,
       ]
     );
+
+    if (candidat.statut === 'nouveau') {
+      nouveauxInseres.push({ id, nom: candidat.nom, adresse: candidat.adresse ?? null, lat, lng });
+    }
+  }
+
+  const doublonsPostGeocodage = await nettoyerDoublonsPostGeocodage(pool, nouveauxInseres);
+  if (doublonsPostGeocodage > 0) {
+    console.log(`${doublonsPostGeocodage} doublon(s) rattrapé(s) après géocodage (GPS absent des deux côtés au moment de la fusion).`);
   }
 
   return {
@@ -195,9 +211,41 @@ export async function scraperEtInserer(pool: Pool, config: ScrapingConfig): Prom
     brut: brut.length,
     parSource,
     fusionnes: fusionnes.length,
-    doublonsConfirmes: doublons.length,
+    doublonsConfirmes: doublons.length + doublonsPostGeocodage,
     incertains: resultats.filter((r) => r.statut === 'incertain').length,
-    nouveaux: resultats.filter((r) => r.statut === 'nouveau').length,
+    nouveaux: resultats.filter((r) => r.statut === 'nouveau').length - doublonsPostGeocodage,
     geocodageEchecs,
   };
+}
+
+// Deux fiches "nouveau" du même lot peuvent être le même établissement scrapé par deux sources
+// dont une seule fournit son propre GPS (Télécontact/Med.ma/Medicalis ne le font jamais) — au
+// moment de fusionnerParScore, la comparaison tourne alors sans ce signal et le score reste sous
+// le seuil, donc rien n'est fusionné. Une fois les DEUX fiches insérées avec leurs coordonnées
+// définitives (post-géocodage), ce rattrapage les recompare avec le signal complet et supprime le
+// doublon le moins complet — constaté en prod : "Fouzia BENKHRABA" (Doctori.ma, GPS natif) et
+// "Benkhraba Laaboudi Faouzia" (Télécontact, geocodée après coup) insérées séparément, jamais
+// comparées avec GPS des deux côtés avant cette passe.
+async function nettoyerDoublonsPostGeocodage(
+  pool: Pool,
+  candidats: { id: string; nom: string; adresse: string | null; lat: number; lng: number }[]
+): Promise<number> {
+  const aSupprimer = new Set<string>();
+  for (let i = 0; i < candidats.length; i++) {
+    if (aSupprimer.has(candidats[i].id)) continue;
+    for (let j = i + 1; j < candidats.length; j++) {
+      if (aSupprimer.has(candidats[j].id)) continue;
+      const { score } = scoreCorrespondance(candidats[i], candidats[j]);
+      if (score >= SEUIL_DOUBLON_CONFIRME) {
+        const a = candidats[i], b = candidats[j];
+        const scoreA = (a.adresse ? 1 : 0) + a.nom.length / 1000;
+        const scoreB = (b.adresse ? 1 : 0) + b.nom.length / 1000;
+        aSupprimer.add(scoreA >= scoreB ? b.id : a.id);
+      }
+    }
+  }
+  if (aSupprimer.size > 0) {
+    await pool.query(`DELETE FROM etablissements WHERE id = ANY($1)`, [[...aSupprimer]]);
+  }
+  return aSupprimer.size;
 }
