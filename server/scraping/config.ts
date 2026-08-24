@@ -32,6 +32,27 @@ export const CATEGORIE_SLUGS: Record<string, CategorieSlugs> = {
   Orthopédiste: { dabadoc: 'orthopedie', doctori: null, telecontact: 'orthopediste', medma: null },
   'Médecin Généraliste': { dabadoc: 'medecin-generaliste', doctori: 'medecin-generaliste', telecontact: 'medecin-generaliste', medma: 'medecin-generaliste' },
   "Laboratoire d'Analyses Médicales": { dabadoc: null, doctori: null, telecontact: null, medma: 'laboratoire-danalyses-de-biologie-medicale' },
+  // Gynécologue : DabaDoc/Doctori/Med.ma utilisent le terme complet "gynecologue-obstetricien"
+  // (compte plus large que "gynecologue" seul sur DabaDoc — 297 vs 255 testé à Casablanca) ;
+  // Télécontact ne référence que "gynecologue" (le suffixe "-obstetricien" y donne 0 résultat).
+  Gynécologue: { dabadoc: 'gynecologue-obstetricien', doctori: 'gynecologue-obstetricien', telecontact: 'gynecologue', medma: 'gynecologue-obstetricien' },
+  // Gastro-entérologue : Doctori nomme sa catégorie "gastrologue-enterologue" (et non
+  // "gastro-enterologue" comme les 3 autres sites — testé, 404 sinon).
+  'Gastro-entérologue': { dabadoc: 'gastro-enterologue', doctori: 'gastrologue-enterologue', telecontact: 'gastro-enterologue', medma: 'gastro-enterologue' },
+  // ORL : absente de la page "spécialités" et du menu principal de DabaDoc, mais bien présente
+  // dans le sélecteur complet de spécialités embarqué sur leur page d'accueil (source de vérité
+  // trouvée après coup) sous un slug non devinable par simple normalisation du nom :
+  // "oto-rhino-laryngologiste-orl" — 190 résultats réels confirmés à Casablanca. Les 3 autres
+  // sites ont chacun leur propre orthographe du terme ("oto-rhino-laryngologue" pour Doctori,
+  // "oto-rhino-laryngologiste" pour Télécontact) ; "orl" seul sur Télécontact remontait un
+  // déménageur homonyme ("Bruno Orlando Déménagement") plutôt que des médecins.
+  ORL: { dabadoc: 'oto-rhino-laryngologiste-orl', doctori: 'oto-rhino-laryngologue', telecontact: 'oto-rhino-laryngologiste', medma: 'oto-rhino-laryngologiste-orl' },
+  // Oncologue : Doctori ne référence que "cancerologue" (peu de résultats mais réels, 2 testés à
+  // Casablanca) ; Med.ma a aussi des sous-catégories "oncologue-radiotherapeute"/
+  // "-chimiotherapeute" qui se recoupent partiellement avec "oncologue" sans le sur-ensemble
+  // exact — le terme générique "oncologue" est conservé comme meilleur compromis.
+  Oncologue: { dabadoc: 'oncologue-medical', doctori: 'cancerologue', telecontact: 'oncologue', medma: 'oncologue' },
+  Néphrologue: { dabadoc: 'nephrologue', doctori: 'nephrologue', telecontact: 'nephrologue', medma: 'nephrologue' },
 };
 
 export const VILLES_CIBLES = Object.keys(VILLE_SLUGS);
