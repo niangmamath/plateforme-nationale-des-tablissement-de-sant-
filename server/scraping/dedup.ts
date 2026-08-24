@@ -86,6 +86,21 @@ function normaliserNom(nom: string): string[] {
     .sort();
 }
 
+// Version SANS filtrage des mots génériques/chiffres/lettres isolées — uniquement accents/casse/
+// ponctuation neutralisés. Sert de filet pour normaliserNom() : une enseigne comme "3Dental" ou
+// "A.k.i." ne contient QUE des chiffres, lettres isolées ou mots-catégorie ("dental"), donc
+// normaliserNom() la réduit à un tableau vide des deux côtés — constaté en prod : la même fiche
+// Télécontact réinsérée à l'identique (même nom, même adresse, même GPS) à chaque scrape obtenait
+// un score de 0 au lieu de 1, faute du moindre token à comparer.
+function normaliserNomBrut(nom: string): string {
+  return nom
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function normaliserTelephone(tel?: string | null): string | null {
   if (!tel) return null;
   const chiffres = tel.replace(/\D/g, '');
@@ -134,6 +149,18 @@ interface SimilariteNoms {
 function similariteNoms(nom1: string, nom2: string): SimilariteNoms {
   const t1 = normaliserNom(nom1);
   const t2 = normaliserNom(nom2);
+
+  // Aucun token distinctif des deux côtés (nom réduit à des chiffres/lettres isolées/mots
+  // génériques, ex. "3Dental") — Jaccard et couverture sont structurellement à 0 quel que soit le
+  // contenu réel, donc on retombe sur une égalité stricte de la chaîne brute (non filtrée) plutôt
+  // que de déclarer par défaut deux enseignes identiques "différentes".
+  if (t1.length === 0 && t2.length === 0) {
+    const brut1 = normaliserNomBrut(nom1);
+    const brut2 = normaliserNomBrut(nom2);
+    const identique = brut1.length > 0 && brut1 === brut2;
+    return { score: identique ? 1 : 0, chevauchementMots: identique ? 1 : 0 };
+  }
+
   const set1 = new Set(t1), set2 = new Set(t2);
   const jaccard = similariteJaccard(set1, set2);
   const s1 = t1.join(' ');
