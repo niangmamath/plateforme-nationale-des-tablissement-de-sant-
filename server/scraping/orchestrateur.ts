@@ -8,7 +8,7 @@ import {
   prochainNumeroEtablissement,
 } from '../extraction';
 import { scrapeDabaDoc, scrapeDoctori, scrapeTelecontact, scrapeMedMa, scrapeMedicalis } from './sources';
-import { fusionnerParScore, classifierContreExistants, distanceGpsMetres, chargerExistants, chargerExistantsAutresCategories, scoreCorrespondance, SEUIL_DOUBLON_CONFIRME, type FicheScrapee } from './dedup';
+import { fusionnerParScore, classifierContreExistants, distanceGpsMetres, chargerExistants, chargerExistantsAutresCategories, scoreCorrespondance, SEUIL_DOUBLON_CONFIRME, estNomPersonnel, type FicheScrapee, type FicheExistante } from './dedup';
 import type { CategorieSlugs } from './config';
 
 export interface ScrapingConfig {
@@ -164,9 +164,11 @@ export async function scraperEtInserer(pool: Pool, config: ScrapingConfig): Prom
   // rattrapage anti-doublon plus bas : c'est justement pour CES fiches que fusionnerParScore, plus
   // haut, tourne à l'aveugle côté GPS (Télécontact/Med.ma/Medicalis ne fournissent jamais leurs
   // propres coordonnées, donc la comparaison intra-lot se fait sans ce signal tant que le
-  // géocodage n'a pas eu lieu). Les fiches "incertain" ont déjà un doublon_possible_id à trancher
-  // manuellement, pas besoin de les revérifier ici.
+  // géocodage n'a pas eu lieu).
   const nouveauxInseres: { id: string; nom: string; adresse: string | null; lat: number; lng: number }[] = [];
+  // Fiches "incertain" tout juste insérées — leur doublon_possible_id a été choisi AVANT
+  // géocodage, sur le même signal incomplet ; voir revaliderIncertains plus bas.
+  const incertainsInseres: { id: string; nom: string; adresse: string | null; lat: number; lng: number; categorie: string; doublonPossibleId: string | null }[] = [];
 
   for (const candidat of aInserer) {
     let lat = candidat.lat, lng = candidat.lng;
@@ -204,6 +206,11 @@ export async function scraperEtInserer(pool: Pool, config: ScrapingConfig): Prom
 
     if (candidat.statut === 'nouveau') {
       nouveauxInseres.push({ id, nom: candidat.nom, adresse: candidat.adresse ?? null, lat, lng });
+    } else if (candidat.statut === 'incertain') {
+      incertainsInseres.push({
+        id, nom: candidat.nom, adresse: candidat.adresse ?? null, lat, lng,
+        categorie: config.categorie, doublonPossibleId: candidat.matchExistant?.id ?? null,
+      });
     }
   }
 
@@ -212,14 +219,18 @@ export async function scraperEtInserer(pool: Pool, config: ScrapingConfig): Prom
     console.log(`${doublonsPostGeocodage} doublon(s) rattrapé(s) après géocodage (GPS absent des deux côtés au moment de la fusion).`);
   }
 
+  const { corriges, confirmes } = await revaliderIncertains(pool, incertainsInseres, existants, existantsAutresCategories);
+  if (corriges > 0) console.log(`${corriges} doublon_possible_id corrigé(s) après géocodage (le candidat suggéré n'était pas le bon).`);
+  if (confirmes > 0) console.log(`${confirmes} fiche(s) "incertain" en fait confirmée(s) doublon après géocodage.`);
+
   return {
     categorie: config.categorie,
     ville: config.ville,
     brut: brut.length,
     parSource,
     fusionnes: fusionnes.length,
-    doublonsConfirmes: doublons.length + doublonsPostGeocodage,
-    incertains: resultats.filter((r) => r.statut === 'incertain').length,
+    doublonsConfirmes: doublons.length + doublonsPostGeocodage + confirmes,
+    incertains: resultats.filter((r) => r.statut === 'incertain').length - confirmes,
     nouveaux: resultats.filter((r) => r.statut === 'nouveau').length - doublonsPostGeocodage,
     geocodageEchecs,
   };
@@ -255,4 +266,47 @@ async function nettoyerDoublonsPostGeocodage(
     await pool.query(`DELETE FROM etablissements WHERE id = ANY($1)`, [[...aSupprimer]]);
   }
   return aSupprimer.size;
+}
+
+// Le doublon_possible_id d'une fiche "incertain" est choisi AU MOMENT DU CLASSEMENT, avant
+// géocodage — pour les candidats sans coordonnées natives, la comparaison tourne alors sans le
+// signal GPS et peut retenir, à tort, le candidat avec la meilleure coïncidence purement
+// textuelle plutôt que le vrai doublon. Constaté en prod : "Mohamed Bergi" suggéré comme doublon
+// possible de "Jamal Berrada Mohamed" (simple coïncidence de lettres) alors que "Dr Mohamed
+// BERGI" — la vraie même personne — existait déjà en base, jamais retenu faute de GPS au moment
+// du calcul. Une fois les coordonnées définitives connues, on relance la recherche du meilleur
+// match en entier (pas seulement une revérification du candidat déjà suggéré) : si un candidat
+// plus proche existe, doublon_possible_id est corrigé ; si le nouveau score dépasse le seuil de
+// confirmation, la fiche est un vrai doublon et supprimée plutôt que laissée en attente.
+async function revaliderIncertains(
+  pool: Pool,
+  candidats: { id: string; nom: string; adresse: string | null; lat: number; lng: number; categorie: string; doublonPossibleId: string | null }[],
+  existants: FicheExistante[],
+  existantsAutresCategories: FicheExistante[]
+): Promise<{ corriges: number; confirmes: number }> {
+  let corriges = 0;
+  const aConfirmer: string[] = [];
+
+  for (const candidat of candidats) {
+    const pool2 = estNomPersonnel(candidat.nom) ? [...existants, ...existantsAutresCategories] : existants;
+    let meilleur: FicheExistante | null = null, meilleurScore = 0;
+    for (const e of pool2) {
+      const { score } = scoreCorrespondance(e, candidat);
+      if (score > meilleurScore) { meilleurScore = score; meilleur = e; }
+    }
+    if (!meilleur) continue;
+
+    if (meilleurScore >= SEUIL_DOUBLON_CONFIRME) {
+      aConfirmer.push(candidat.id);
+    } else if (meilleur.id !== candidat.doublonPossibleId) {
+      await pool.query(`UPDATE etablissements SET doublon_possible_id = $1 WHERE id = $2`, [meilleur.id, candidat.id]);
+      corriges++;
+    }
+  }
+
+  if (aConfirmer.length > 0) {
+    await pool.query(`DELETE FROM etablissements WHERE id = ANY($1)`, [aConfirmer]);
+  }
+
+  return { corriges, confirmes: aConfirmer.length };
 }
