@@ -8,6 +8,7 @@ import { Etablissement, Specialite } from '../types';
 import { MapPin, ChevronRight } from 'lucide-react';
 import { List, type RowComponentProps } from 'react-window';
 import { ICONES, ICONE_DEFAUT, BADGE_PAR_COULEUR, BADGE_DEFAUT } from '../config/specialiteVisuels';
+import { nomAffichage } from '../utils/nomAffichage';
 
 interface SidebarListProps {
   establishments: Etablissement[];
@@ -67,7 +68,7 @@ function Row({
           <h3 className={`text-xs font-black tracking-tight leading-snug transition-colors line-clamp-2 ${
             isSelected ? 'text-slate-950 text-sm' : 'text-slate-800'
           }`}>
-            {etab.nom}
+            {nomAffichage(etab.nom)}
           </h3>
 
           {/* Location Info */}

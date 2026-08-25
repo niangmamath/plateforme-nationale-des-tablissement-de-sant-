@@ -11,6 +11,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import { Etablissement, MapStyle, Specialite } from '../types';
 import { Maximize, Compass, MapPin, Map as MapIcon, Sun, Moon, Radar, X, Ruler, ChevronUp, ChevronDown } from 'lucide-react';
 import { HEX_PAR_COULEUR, HEX_DEFAUT, SVG_PAR_ICONE, SVG_DEFAUT } from '../config/specialiteVisuels';
+import { nomAffichage } from '../utils/nomAffichage';
 
 // Les popups de marqueur sont construites en concaténant des champs venant de la base
 // (nom, adresse...) dans une chaîne HTML passée telle quelle à Leaflet — sans échappement,
@@ -291,7 +292,7 @@ export default function InteractiveMap({
       const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${etab.latitude},${etab.longitude}&query_place_id=${encodeURIComponent(etab.placeId)}`;
       const categorie = echapperHtml(etab.categorie);
       const source = echapperHtml(etab.source);
-      const nom = echapperHtml(etab.nom);
+      const nom = echapperHtml(nomAffichage(etab.nom));
       const quartierOuArrondissement = echapperHtml(etab.quartier || etab.arrondissement);
       const ville = echapperHtml(etab.ville);
       const adresse = echapperHtml(etab.adresse);
