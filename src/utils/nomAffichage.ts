@@ -20,6 +20,9 @@ const TITRE = /\b(dr|dre|pr|pre|docteur|professeur)\.?\s*/i;
 // échange de ne jamais perdre une partie réelle du nom.
 const MOT_NOM = /^[A-Za-zÀ-ÿ][\wÀ-ÿ'’.-]*$/;
 const SEPARATEUR_MARKETING = /\s*[-–—:|]\s|\s*\(/;
+// Un 2e titre plus loin dans la chaîne ("Dr X, Dr Y") signale un 2e médecin listé sous la même
+// fiche — le nom du premier s'arrête là, jamais absorbé comme s'il faisait partie du même nom.
+const MOT_TITRE = /^(dr|dre|pr|pre|docteur|professeur)\.?$/i;
 
 // Mots de spécialité/enseigne qui restent parfois collés au nom faute de séparateur ("Dr X Y
 // Cabinet Dentaire", "Dr X Y Psychiatrie") — capitalisés comme un vrai nom, donc indiscernables du
@@ -58,7 +61,7 @@ export function nomAffichage(nomBrut: string): string {
       // Une virgule ou parenthèse fermante collée au dernier mot ("Boulegriss,", "Samai)") ne
       // doit pas faire échouer sa reconnaissance — seul un vrai séparateur (espace) sépare les mots.
       const mot = motBrut.replace(/[,):;-]+$/, '');
-      if (motsNom.length >= 4 || !MOT_NOM.test(mot) || MOTS_A_ECARTER.has(mot.toLowerCase())) break;
+      if (motsNom.length >= 4 || !MOT_NOM.test(mot) || MOTS_A_ECARTER.has(mot.toLowerCase()) || MOT_TITRE.test(mot)) break;
       motsNom.push(mot);
     }
     if (motsNom.length >= 1) {
