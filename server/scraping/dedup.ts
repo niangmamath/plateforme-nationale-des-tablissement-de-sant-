@@ -144,6 +144,13 @@ interface SimilariteNoms {
   // ("lahata sophia" vs "asma bezzazi medical" → 0.20), un signal trop bruité pour, à lui seul,
   // autoriser le GPS/l'adresse à compter comme corroboration (voir scoreCorrespondance).
   chevauchementMots: number;
+  // true si le nom le plus court est ENTIÈREMENT inclus dans l'autre (aucun mot distinctif
+  // supplémentaire d'aucun des deux côtés au-delà du texte marketing générique déjà filtré) — voir
+  // scoreCorrespondance pour pourquoi ça change tout : un simple nom de famille partagé
+  // ("Benkirane Fouzia" vs "Chaoui Benkirane Naïma") atteint le même chevauchementMots qu'une vraie
+  // inclusion complète, mais les deux prénoms distincts qui subsistent de chaque côté sont
+  // justement le signal que ce sont deux personnes différentes.
+  contientEntierement: boolean;
 }
 
 function similariteNoms(nom1: string, nom2: string): SimilariteNoms {
@@ -158,7 +165,7 @@ function similariteNoms(nom1: string, nom2: string): SimilariteNoms {
     const brut1 = normaliserNomBrut(nom1);
     const brut2 = normaliserNomBrut(nom2);
     const identique = brut1.length > 0 && brut1 === brut2;
-    return { score: identique ? 1 : 0, chevauchementMots: identique ? 1 : 0 };
+    return { score: identique ? 1 : 0, chevauchementMots: identique ? 1 : 0, contientEntierement: identique };
   }
 
   const set1 = new Set(t1), set2 = new Set(t2);
@@ -186,7 +193,7 @@ function similariteNoms(nom1: string, nom2: string): SimilariteNoms {
   // score non nul même sans aucun mot partagé, sur la seule coïncidence de lettres communes
   // (suffixes de patronymes marocains très fréquents comme "-aoui" : "Yahyaoui" vs "Chennaoui").
   const score = chevauchementMots > 0 ? Math.max(chevauchementMots, simEdition) : chevauchementMots;
-  return { score, chevauchementMots };
+  return { score, chevauchementMots, contientEntierement: couverture === 1 };
 }
 
 export function distanceGpsMetres(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -205,7 +212,7 @@ export function scoreCorrespondance(a: FicheComparable, b: FicheComparable): Res
     return { score: 0.97, signaux: ['téléphone identique (signal décisif)'] };
   }
 
-  const { score: simNom, chevauchementMots } = similariteNoms(a.nom, b.nom);
+  const { score: simNom, chevauchementMots, contientEntierement } = similariteNoms(a.nom, b.nom);
 
   // Un nom complet (prénom + nom) quasi-identique est déjà un signal fort à lui seul. On ne le
   // laisse pas être dilué par une adresse mal comparable (formats hétérogènes d'une source à
@@ -256,6 +263,19 @@ export function scoreCorrespondance(a: FicheComparable, b: FicheComparable): Res
   // Deux téléphones connus mais différents : signal faible contre (un cabinet peut changer de
   // ligne), pas éliminatoire à lui seul, mais fait légèrement baisser le score composite.
   if (tel1 && tel2 && tel1 !== tel2) score *= 0.85;
+
+  // Un patronyme partagé SEUL (aucun des deux noms n'incluant entièrement l'autre — chacun garde
+  // un prénom ou un mot distinctif propre que l'autre n'a pas) ne doit jamais suffire, même avec un
+  // GPS/adresse très proches, à confirmer automatiquement un doublon : deux cabinets voisins tenus
+  // par deux personnes différentes de même famille sont courants, et le score composite peut sinon
+  // dépasser le seuil de confirmation sur la seule coïncidence géographique (constaté en prod :
+  // "Benkirane Fouzia" vs "Chaoui Benkirane Naïma", score 0.81 sans aucune preuve que c'est la même
+  // personne — même schéma que Naciri Ilham/Leila, Bechari/Essaidi déjà rencontrés). Plafonné
+  // juste sous SEUIL_DOUBLON_CONFIRME : reste éligible à "incertain" pour revue humaine, jamais
+  // auto-supprimé sans regard.
+  if (!contientEntierement && score >= SEUIL_DOUBLON_CONFIRME) {
+    score = SEUIL_DOUBLON_CONFIRME - 0.01;
+  }
 
   const signaux: string[] = [];
   if (simNom >= 0.85) signaux.push(`nom quasi-identique (${simNom.toFixed(2)})`);
