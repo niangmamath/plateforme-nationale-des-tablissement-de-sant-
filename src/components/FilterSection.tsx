@@ -218,7 +218,7 @@ export default function FilterSection({
             <div className="flex gap-2 items-center">
               <select
                 id="filter-source"
-                className="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-slate-800 focus:ring-4 focus:ring-slate-900/5 transition-all text-xs font-bold cursor-pointer"
+                className="flex-1 min-w-0 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-slate-800 focus:ring-4 focus:ring-slate-900/5 transition-all text-xs font-bold cursor-pointer truncate"
                 value={filters.source}
                 onChange={(e) => handleSelectChange('source', e.target.value)}
               >
