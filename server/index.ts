@@ -4,6 +4,7 @@ import { pool } from './db';
 import { getEtablissements, getPays, getSpecialites } from './queries';
 import { extraireEtInserer } from './extraction';
 import { extraireEtInsererZone } from './demographie';
+import { repondre, type MessageChat } from './chat';
 
 const app = express();
 const PORT = process.env.API_PORT || 4000;
@@ -66,6 +67,30 @@ app.post('/api/admin/extraction-zone', verifierSecretAdmin, async (req, res) => 
     res.json(resultat);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Assistant du chatbot (widget flottant) — mêmes données réelles (démographie, spécialités,
+// concurrence) que l'app, injectées dans le contexte du modèle plutôt que servies telles quelles.
+app.post('/api/chat', async (req, res) => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    res.status(500).json({ error: "GEMINI_API_KEY n'est pas configurée côté serveur." });
+    return;
+  }
+
+  const { messages } = (req.body ?? {}) as { messages?: MessageChat[] };
+  if (!Array.isArray(messages) || messages.length === 0) {
+    res.status(400).json({ error: 'Paramètre requis : messages (tableau non vide).' });
+    return;
+  }
+
+  try {
+    const text = await repondre(pool, apiKey, messages);
+    res.json({ text });
+  } catch (err: any) {
+    console.error('Erreur /api/chat :', err);
+    res.status(500).json({ error: err.message ?? 'Erreur inconnue.' });
   }
 });
 

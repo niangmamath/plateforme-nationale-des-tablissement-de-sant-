@@ -30,29 +30,33 @@ export default function ChatbotWidget() {
     scrollToBottom();
   }, [messages, isTyping]);
 
-  const handleSend = () => {
-    if (!inputValue.trim()) return;
-    
+  const handleSend = async () => {
+    if (!inputValue.trim() || isTyping) return;
+
     // 1. Ajouter le message de l'utilisateur
     const userText = inputValue;
-    setMessages(prev => [...prev, { id: Date.now(), type: 'user', text: userText }]);
+    const historique = [...messages, { id: Date.now(), type: 'user' as const, text: userText }];
+    setMessages(historique);
     setInputValue("");
     setIsTyping(true);
 
-    // 2. Simuler la réflexion de l'IA et générer une réponse ciblée
-    setTimeout(() => {
+    // 2. Appeler le vrai backend (Gemini + données réelles de la base)
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: historique.map((m) => ({ role: m.type === 'user' ? 'user' : 'model', text: m.text })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erreur serveur.');
+      setMessages(prev => [...prev, { id: Date.now(), type: 'bot', text: data.text || "Je n'ai pas de réponse à vous proposer pour l'instant." }]);
+    } catch (err: any) {
+      setMessages(prev => [...prev, { id: Date.now(), type: 'bot', text: "Désolé, une erreur est survenue en interrogeant l'assistant (" + (err?.message || 'inconnue') + "). Réessayez dans un instant." }]);
+    } finally {
       setIsTyping(false);
-      
-      let botResponse = "D'après l'analyse croisée des données démographiques (RGPH 2024) et immobilières (YaK), je vous recommande vivement l'arrondissement d'Anfa ou El Maarif. Le pouvoir d'achat y est maximal. Souhaitez-vous générer un Business Plan pour cette zone ?";
-      
-      if (userText.toLowerCase().includes('dermatolo') || userText.toLowerCase().includes('esthétique')) {
-        botResponse = "Pour une activité en dermatologie esthétique, le pouvoir d'achat est le critère n°1 (actes non-remboursés). Je vous conseille Anfa (18 500 DH/m²). La cible des 15-59 ans y représente 58.9% de la population. Voulez-vous voir le rapport détaillé ?";
-      } else if (userText.toLowerCase().includes('cardiolo') || userText.toLowerCase().includes('ophtalmo')) {
-        botResponse = "Pour votre spécialité, la proximité avec une population senior est cruciale. Hay Hassani présente la plus forte proportion de 60+ ans (29.6%). Voulez-vous que je lance la génération de votre Business Plan pour cette zone ?";
-      }
-
-      setMessages(prev => [...prev, { id: Date.now(), type: 'bot', text: botResponse }]);
-    }, 1800);
+    }
   };
 
   return (
@@ -134,7 +138,7 @@ export default function ChatbotWidget() {
                 />
                 <button 
                   onClick={handleSend}
-                  disabled={!inputValue.trim()}
+                  disabled={!inputValue.trim() || isTyping}
                   className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors shadow-sm"
                 >
                   <Send className="h-4 w-4" />
