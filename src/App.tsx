@@ -4,6 +4,7 @@
  */
 import ScoringSection from './components/ScoringSection';
 import ChatbotWidget from './components/ChatbotWidget';
+import ScrollToggleButton from './components/ScrollToggleButton';
 import React, { useState, useMemo, useEffect } from 'react';
 import { computeKpis } from './data/etablissements';
 import { Etablissement, FilterState, PaysGeo, Specialite, VilleGeo } from './types';
@@ -293,6 +294,7 @@ export default function App() {
         </div>
       </footer>
       <ChatbotWidget />
+      <ScrollToggleButton />
     </div>
   );
 }
