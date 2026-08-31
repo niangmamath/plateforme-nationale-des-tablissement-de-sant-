@@ -12,8 +12,15 @@ export const VILLE_SLUGS: Record<string, string> = {
 };
 
 export interface CategorieSlugs {
-  dabadoc: string | null;
-  doctori: string | null;
+  // string[] : DabaDoc éclate parfois une spécialité en plusieurs catégories distinctes de son
+  // propre menu (constaté pour Oncologue — voir plus bas), chacune avec sa propre pagination et
+  // des listes qui se chevauchent sans être identiques. Un seul slug sous-couvrait alors largement
+  // la spécialité réelle.
+  dabadoc: string | string[] | null;
+  // string[] : constaté sur Doctori.ma pour Oncologue — "cancerologue" (2 praticiens) sous-couvrait
+  // largement "oncologue-medicale" (7 praticiens, dont 5 absents du premier slug) ; Doctori.ma
+  // fragmente donc parfois ses spécialités comme DabaDoc, même mécanisme de fusion multi-slugs.
+  doctori: string | string[] | null;
   telecontact: string | null;
   medma: string | null;
 }
@@ -37,8 +44,10 @@ export const CATEGORIE_SLUGS: Record<string, CategorieSlugs> = {
   // Télécontact ne référence que "gynecologue" (le suffixe "-obstetricien" y donne 0 résultat).
   Gynécologue: { dabadoc: 'gynecologue-obstetricien', doctori: 'gynecologue-obstetricien', telecontact: 'gynecologue', medma: 'gynecologue-obstetricien' },
   // Gastro-entérologue : Doctori nomme sa catégorie "gastrologue-enterologue" (et non
-  // "gastro-enterologue" comme les 3 autres sites — testé, 404 sinon).
-  'Gastro-entérologue': { dabadoc: 'gastro-enterologue', doctori: 'gastrologue-enterologue', telecontact: 'gastro-enterologue', medma: 'gastro-enterologue' },
+  // "gastro-enterologue" comme les 3 autres sites — testé, 404 sinon). DabaDoc a aussi
+  // "hepatologue" et "proctologue" en catégories séparées (recoupement partiel avec
+  // "gastro-enterologue" mais pas total — vérifié à Casablanca, ~3/13 proctologues non recoupés).
+  'Gastro-entérologue': { dabadoc: ['gastro-enterologue', 'hepatologue', 'proctologue'], doctori: 'gastrologue-enterologue', telecontact: 'gastro-enterologue', medma: 'gastro-enterologue' },
   // ORL : absente de la page "spécialités" et du menu principal de DabaDoc, mais bien présente
   // dans le sélecteur complet de spécialités embarqué sur leur page d'accueil (source de vérité
   // trouvée après coup) sous un slug non devinable par simple normalisation du nom :
@@ -47,12 +56,47 @@ export const CATEGORIE_SLUGS: Record<string, CategorieSlugs> = {
   // "oto-rhino-laryngologiste" pour Télécontact) ; "orl" seul sur Télécontact remontait un
   // déménageur homonyme ("Bruno Orlando Déménagement") plutôt que des médecins.
   ORL: { dabadoc: 'oto-rhino-laryngologiste-orl', doctori: 'oto-rhino-laryngologue', telecontact: 'oto-rhino-laryngologiste', medma: 'oto-rhino-laryngologiste-orl' },
-  // Oncologue : Doctori ne référence que "cancerologue" (peu de résultats mais réels, 2 testés à
-  // Casablanca) ; Med.ma a aussi des sous-catégories "oncologue-radiotherapeute"/
-  // "-chimiotherapeute" qui se recoupent partiellement avec "oncologue" sans le sur-ensemble
-  // exact — le terme générique "oncologue" est conservé comme meilleur compromis.
-  Oncologue: { dabadoc: 'oncologue-medical', doctori: 'cancerologue', telecontact: 'oncologue', medma: 'oncologue' },
+  // Oncologue : DabaDoc éclate l'oncologie en plusieurs catégories distinctes de son propre menu —
+  // "oncologue-medical" seul ne couvrait qu'une fraction du réel (vérifié à Casablanca : les 7
+  // slugs ci-dessous se recoupent partiellement mais chacun apporte des médecins que les autres
+  // n'ont pas — confirmé via le sitemap DabaDoc par ville, qui liste "chirurgien-cancerologue"
+  // comme slug distinct de "chirurgien-oncologue", faible volume mais réel). "Sénologue"
+  // (spécialiste du sein, souvent non-oncologue — radiologue/gynécologue) volontairement exclu
+  // pour ne pas polluer la catégorie. Med.ma a aussi des sous-catégories
+  // "oncologue-radiotherapeute"/"-chimiotherapeute" qui se recoupent partiellement avec "oncologue"
+  // sans le sur-ensemble exact — le terme générique "oncologue" est conservé comme meilleur
+  // compromis pour ce site.
+  Oncologue: {
+    dabadoc: ['oncologue-medical', 'oncologue-cancerologue', 'chirurgien-oncologue', 'chirurgien-cancerologue', 'radiotherapeute', 'hematologue', 'oncologie-pediatrique'],
+    // Doctori.ma fragmente aussi (voir doctori dans CategorieSlugs plus haut) : "cancerologue" seul
+    // ne couvrait que 2 praticiens à Casablanca contre 7 sous "oncologue-medicale" — recoupement
+    // partiel avec "radiotherapeute", mêmes 3 slugs scrapés que DabaDoc pour la même raison.
+    doctori: ['cancerologue', 'oncologue-medicale', 'radiotherapeute'], telecontact: 'oncologue', medma: 'oncologue',
+  },
   Néphrologue: { dabadoc: 'nephrologue', doctori: 'nephrologue', telecontact: 'nephrologue', medma: 'nephrologue' },
+  // Endocrinologue : DabaDoc distingue "endocrinologue" et "diabetologue" (recoupement partiel,
+  // même mécanisme qu'Oncologue ci-dessus) — les deux slugs sont scrapés. Doctori nomme sa
+  // catégorie "endocrinologue-maladies-metaboliques" (pas "endocrinologue" seul, 404 sinon —
+  // vérifié). Med.ma non vérifié (rendu en JS, pas de fetch statique possible) : laissé absent
+  // plutôt que de risquer un slug faux qui pollue silencieusement les résultats.
+  Endocrinologue: { dabadoc: ['endocrinologue', 'diabetologue'], doctori: 'endocrinologue-maladies-metaboliques', telecontact: 'endocrinologue', medma: null },
+  // Anatomopathologiste : Doctori orthographie sa catégorie avec un tiret ("anatomo-pathologiste"),
+  // contrairement à DabaDoc/Télécontact ("anatomopathologiste" en un mot) — vérifié, 404 sinon.
+  // Med.ma non vérifié, laissé absent (même raison qu'Endocrinologue ci-dessus).
+  Anatomopathologiste: { dabadoc: 'anatomopathologiste', doctori: 'anatomo-pathologiste', telecontact: 'anatomopathologiste', medma: null },
+  // Pédiatre : DabaDoc liste aussi de nombreuses sous-spécialités pédiatriques distinctes
+  // (pédopsychiatre, neuropédiatre, chirurgien pédiatre, oncologie pédiatrique...) — volontairement
+  // exclues ici, hors périmètre du "pédiatre généraliste" demandé. Med.ma non vérifié (même raison).
+  Pédiatre: { dabadoc: 'pediatre', doctori: 'pediatre', telecontact: 'pediatre', medma: null },
+  // Cardiologue : slug identique sur les 4 sites, vérifié directement (retours 200 avec de vraies
+  // fiches sur chacun). Volontairement distinct de "chirurgien-cardiaque"/"chirurgien-cardio-vasculaire"
+  // (DabaDoc) et "chirurgien-cardio-vasculaire" (Doctori) — des catégories séparées sur ces sites,
+  // jamais mélangées avec "cardiologue" : les exclure suffit à écarter les chirurgiens, demandé
+  // explicitement.
+  Cardiologue: { dabadoc: 'cardiologue', doctori: 'cardiologue', telecontact: 'cardiologue', medma: 'cardiologue' },
+  // Neurologue : même logique — "neurochirurgien" (DabaDoc et Doctori) est une catégorie distincte
+  // de "neurologue", jamais scrapée ici, ce qui écarte les chirurgiens comme demandé.
+  Neurologue: { dabadoc: 'neurologue', doctori: 'neurologue', telecontact: 'neurologue', medma: 'neurologue' },
 };
 
 export const VILLES_CIBLES = Object.keys(VILLE_SLUGS);
@@ -73,14 +117,37 @@ export const MEDICALIS_CODE_VILLE: Record<string, string> = {
   Tanger: '080',
 };
 
-// Seules 3 catégories vérifiées manuellement comme couvrant des PRATICIENS INDIVIDUELS (testé en
+// Catégories vérifiées manuellement comme couvrant des PRATICIENS INDIVIDUELS (testé en
 // direct sur Casablanca) : Chirurgiens-Dentistes, Médecin-généraliste et Radiologue remontent de
 // vrais noms de médecins. "Centres-Ophtalmologie" existe aussi sur le site mais ne liste QUE des
 // établissements (cliniques), pas des ophtalmologues — volontairement exclue pour ne pas polluer
 // la catégorie "Ophtalmologie" avec des enseignes. Dermatologue, Orthopédiste, Laboratoire
 // d'Analyses Médicales et Clinique Privée n'ont pas de slug correspondant trouvé sur le site.
-export const MEDICALIS_CATEGORIE_SLUGS: Record<string, string> = {
+// Cardiologue/Neurologue ajoutés — "Cardiologue" et "Neurologue" testés propres (que des noms de
+// praticiens, aucune clinique) ; "Cardiologie" contenait au moins une enseigne (CLINIQUE ALMADINA)
+// donc écartée pour Cardiologue. "Neurologie" en revanche remonte des praticiens tout aussi propres
+// que "Neurologue" mais un ensemble partiellement différent (même fragmentation que DabaDoc/Doctori
+// ailleurs) — les deux slugs sont donc scrapés pour Neurologue.
+// Anatomopathologiste testé (Anatomo-pathologiste, Anatomopathologiste, Anatomo-Pathologistes) :
+// 0 résultat sur les 3 — pas de catégorie correspondante sur ce site, laissé absent.
+// Endocrinologue/Néphrologue/ORL/Pédiatre : même fragmentation constatée que Neurologue plus haut
+// (plusieurs slugs valides, ensembles qui se recoupent sans être identiques).
+// Oncologue : le slug "Oncologue" lui-même ne renvoie rien (0 résultat) — seuls "Cancerologue",
+// "Oncologie" et "Cancerologie" fonctionnent (testés, praticiens individuels réels).
+// Gynécologue : "Gynecologie-Obstetrique" ne remonte que 2 fiches, toutes deux des cliniques
+// (HOPITAL CHEIKH KHALIFA IBN ZAID, INTERNATIONAL CLINIC) — écarté comme "Centres-Ophtalmologie"
+// plus haut ; seul "Gynecologue" garde des praticiens individuels.
+export const MEDICALIS_CATEGORIE_SLUGS: Record<string, string | string[]> = {
   Dentiste: 'Chirurgiens-Dentistes',
   'Médecin Généraliste': 'Médecin-généraliste',
   Radiologue: 'Radiologue',
+  Cardiologue: 'Cardiologue',
+  Neurologue: ['Neurologue', 'Neurologie'],
+  Endocrinologue: ['Endocrinologue', 'Endocrinologie', 'Diabetologue'],
+  'Gastro-entérologue': ['Gastro-enterologue', 'Gastro-Entérologue'],
+  Gynécologue: 'Gynecologue',
+  Néphrologue: ['Nephrologue', 'Nephrologie'],
+  ORL: ['ORL', 'Oto-Rhino-Laryngologiste'],
+  Oncologue: ['Cancerologue', 'Oncologie', 'Cancerologie'],
+  Pédiatre: ['Pediatre', 'Pediatrie'],
 };

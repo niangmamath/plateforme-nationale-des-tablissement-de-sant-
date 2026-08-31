@@ -242,6 +242,16 @@ export async function extraireEtInserer(
   }
   const placesResults = [...placesUniques.values()];
 
+  // Deux garde-fous géographiques constatés nécessaires en prod (Clinique Privée/Fès) : (1) la
+  // recherche textuelle Google Places ("clinique privée Fès, Maroc") peut renvoyer des résultats
+  // hors Maroc quand un nom d'enseigne coïncide ailleurs (ex. "Clinique Santé Medic" et "ELNA
+  // Medical" à Montréal, Canada — même mécanisme documenté dans orchestrateur.ts pour le
+  // géocodage) ; (2) même dans le pays, elle renvoie aussi des établissements bien réels mais
+  // situés dans une tout autre ville (constaté : des cliniques à Kénitra, Tétouan, Béni Mellal,
+  // El Jadida insérées sous "Fès"/"Marrakech" simplement parce que Google les juge pertinentes
+  // pour la requête). Rien ne filtrait cela avant l'insertion.
+  const dansLeMaroc = (lat: number, lng: number) => lat >= 20.5 && lat <= 36.5 && lng >= -17.5 && lng <= -0.5;
+
   const candidats: ExtractionResultItem[] = [];
   for (const place of placesResults) {
     const nomLower = (place.name || '').toLowerCase();
@@ -254,6 +264,8 @@ export async function extraireEtInserer(
     const lat = place.geometry?.location?.lat;
     const lng = place.geometry?.location?.lng;
     if (lat == null || lng == null) continue;
+    if (!dansLeMaroc(lat, lng)) continue;
+    if (centre && distanceMetres(lat, lng, centre.lat, centre.lng) > Math.max(centre.rayon * 2, 30000)) continue;
 
     candidats.push({
       id: '', // affecté après dédoublonnage, voir plus bas

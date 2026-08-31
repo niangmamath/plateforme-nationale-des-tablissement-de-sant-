@@ -145,13 +145,25 @@ export async function scrapeTelecontact(specialite: string, villeSlug: string): 
   return resultats;
 }
 
+// Défilement infini (lazy load par lot à chaque approche du bas de page) — un seul scroll ne
+// déclenche qu'UN lot suivant, pas la liste complète. Constaté en audit : Gynécologue/Casablanca
+// ne remontait que 11 fiches via Med.ma contre 297 pour DabaDoc sur la même combinaison, signe que
+// la majorité des lots restait jamais chargée. On répète scroll+attente tant que le nombre de
+// cartes continue de croître ; arrêt dès qu'un scroll n'en ajoute plus (fin de liste atteinte) ou
+// au plafond de sécurité (évite une boucle sans fin si le site change de structure).
+const MEDMA_SCROLLS_MAX = 30;
+
 export async function scrapeMedMa(driver: WebDriver, specialite: string, villeSlug: string): Promise<FicheScrapee[]> {
   await driver.get(`https://www.med.ma/medecin/${specialite}/${villeSlug}`);
   await driver.sleep(2000);
-  // Contenu chargé au scroll (lazy load) — sans ce déclenchement, la page ne contient que les
-  // premières fiches visibles au chargement initial.
-  await driver.executeScript('window.scrollTo(0, document.body.scrollHeight);');
-  await driver.sleep(3000);
+  let nombreCartesPrecedent = -1;
+  for (let tour = 0; tour < MEDMA_SCROLLS_MAX; tour++) {
+    await driver.executeScript('window.scrollTo(0, document.body.scrollHeight);');
+    await driver.sleep(2000);
+    const nombreCartes: number = await driver.executeScript(`return document.querySelectorAll('.card-doctor-block').length;`);
+    if (nombreCartes === nombreCartesPrecedent) break;
+    nombreCartesPrecedent = nombreCartes;
+  }
   const bruts: { nom: string; adresse: string | null }[] = await driver.executeScript(`
     return Array.from(document.querySelectorAll('.card-doctor-block')).map(card => {
       const nomEl = card.querySelector('.list__label--name');

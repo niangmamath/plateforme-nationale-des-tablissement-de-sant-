@@ -21,9 +21,11 @@ export interface ScrapingConfig {
   // pas l'indicatif téléphonique régional — voir MEDICALIS_CODE_VILLE dans config.ts) et sa
   // couverture par catégorie est trop inégale pour être généralisée sans vérification manuelle
   // (certaines catégories du site ne listent que des cliniques, pas des praticiens individuels).
-  // run-cible.ts et run-generalisation.ts ne le renseignent que pour les 3 catégories vérifiées
-  // (MEDICALIS_CATEGORIE_SLUGS) ; absent pour les autres.
-  medicalis?: { categorieSlug: string; codeVille: string };
+  // run-cible.ts et run-generalisation.ts ne le renseignent que pour les catégories vérifiées
+  // (MEDICALIS_CATEGORIE_SLUGS) ; absent pour les autres. categorieSlug peut être plusieurs slugs
+  // (constaté pour Neurologue : "Neurologue" et "Neurologie" renvoient des listes qui se recoupent
+  // sans être identiques — même mécanisme de fragmentation que DabaDoc/Doctori.ma ailleurs).
+  medicalis?: { categorieSlug: string | string[]; codeVille: string };
 }
 
 export interface ScrapingSummary {
@@ -64,11 +66,19 @@ async function scraperToutesSources(config: ScrapingConfig): Promise<{ enregistr
   const { dabadoc, doctori, telecontact, medma } = config.sources;
 
   console.log(`Scraping HTTP pour ${config.categorie}/${config.ville}...`);
-  const [dabaR, doctoriR, tcR] = await Promise.all([
-    dabadoc ? scrapeDabaDoc(dabadoc, config.villeSlug) : Promise.resolve([]),
-    doctori ? scrapeDoctori(doctori, config.villeSlug) : Promise.resolve([]),
+  // dabadoc peut être plusieurs slugs (catégories DabaDoc distinctes qui se recoupent partiellement
+  // — voir config.ts pour Oncologue) : on les scrape tous et on concatène brut, la fusion
+  // multi-sources plus loin (fusionnerParScore) élimine déjà les doublons entre eux comme pour
+  // n'importe quelle autre source.
+  const slugsDabadoc = dabadoc ? (Array.isArray(dabadoc) ? dabadoc : [dabadoc]) : [];
+  const slugsDoctori = doctori ? (Array.isArray(doctori) ? doctori : [doctori]) : [];
+  const [dabaRParSlug, doctoriRParSlug, tcR] = await Promise.all([
+    Promise.all(slugsDabadoc.map((slug) => scrapeDabaDoc(slug, config.villeSlug))),
+    Promise.all(slugsDoctori.map((slug) => scrapeDoctori(slug, config.villeSlug))),
     telecontact ? scrapeTelecontact(telecontact, config.villeSlug) : Promise.resolve([]),
   ]);
+  const dabaR = dabaRParSlug.flat();
+  const doctoriR = doctoriRParSlug.flat();
   console.log(`  DabaDoc=${dabadoc ? dabaR.length : '—'}, Doctori.ma=${doctori ? doctoriR.length : '—'}, Télécontact/PagesJaunes=${telecontact ? tcR.length : '—'}`);
 
   let medmaR: Awaited<ReturnType<typeof scrapeMedMa>> = [];
@@ -80,7 +90,12 @@ async function scraperToutesSources(config: ScrapingConfig): Promise<{ enregistr
     const driver = await new Builder().forBrowser('chrome').setChromeOptions(options).build();
     try {
       if (medma) medmaR = await scrapeMedMa(driver, medma, config.villeSlug);
-      if (config.medicalis) medicalisR = await scrapeMedicalis(driver, config.medicalis.categorieSlug, config.ville, config.medicalis.codeVille);
+      if (config.medicalis) {
+        const slugsMedicalis = Array.isArray(config.medicalis.categorieSlug) ? config.medicalis.categorieSlug : [config.medicalis.categorieSlug];
+        for (const slug of slugsMedicalis) {
+          medicalisR.push(...(await scrapeMedicalis(driver, slug, config.ville, config.medicalis.codeVille)));
+        }
+      }
     } finally {
       await driver.quit();
     }
@@ -181,7 +196,17 @@ export async function scraperEtInserer(pool: Pool, config: ScrapingConfig): Prom
       // formée ou ambiguë peut faire dériver la recherche n'importe où dans le monde, pas
       // seulement échouer proprement. Même validation qu'à la ligne ~140, appliquée cette fois au
       // résultat du géocodage plutôt qu'à l'entrée.
-      if (!geo || !dansLeMaroc(geo.lat, geo.lng)) {
+      //
+      // dansLeMaroc seule ne suffit pas non plus : un nom de rue générique partagé par plusieurs
+      // villes ("Boulevard Mohammed V", "Rue Moussa Ibn Noussair") fait dériver Google Geocoding
+      // vers la même rue d'UNE AUTRE ville marocaine — toujours "dans le Maroc", donc invisible
+      // pour ce garde-fou. Constaté en prod : des dizaines de fiches "Tanger" (adresse text
+      // correcte) géocodées à Tétouan, Larache, Al Hoceima, voire Nador — jamais détecté avant
+      // insertion. On rejette donc aussi tout résultat à plus de 30km du centroïde de la ville
+      // ciblée (même seuil de repli qu'extraction.ts pour la recherche Google Places).
+      const horsVilleCible =
+        centroideVille != null && geo != null && distanceGpsMetres(geo.lat, geo.lng, centroideVille.lat, centroideVille.lng) > 30000;
+      if (!geo || !dansLeMaroc(geo.lat, geo.lng) || horsVilleCible) {
         geocodageEchecs.push(candidat.nom);
         continue; // pas de coordonnées fiables = pas d'insertion possible (latitude/longitude NOT NULL)
       }
