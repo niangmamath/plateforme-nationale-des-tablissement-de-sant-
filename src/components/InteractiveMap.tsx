@@ -46,6 +46,11 @@ export default function InteractiveMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<{ [id: string]: L.Marker }>({});
+  // Catégorie par id, tenue à jour en parallèle de markersRef — évite à l'effet "Focus externe"
+  // de rescanner tout le tableau `establishments` (des milliers d'entrées pour une grande ville)
+  // juste pour retrouver la catégorie d'un des deux marqueurs dont l'icône change au clic.
+  const categorieParIdRef = useRef<{ [id: string]: string }>({});
+  const previousSelectedIdRef = useRef<string | null>(null);
   const layerGroupRef = useRef<L.MarkerClusterGroup | null>(null);
 
   // Refs pour les outils d'analyse géospatiale
@@ -77,6 +82,13 @@ export default function InteractiveMap({
 
   const isDistanceModeRef = useRef(isDistanceMode);
   useEffect(() => { isDistanceModeRef.current = isDistanceMode; }, [isDistanceMode]);
+
+  // Même principe pour selectedId : lu au moment de la (re)création des marqueurs (effet
+  // ci-dessous) sans en déclencher une nouvelle à chaque clic sur un établissement — la mise à
+  // jour de l'icône sélectionnée est déjà gérée séparément par l'effet "Focus externe" via
+  // setIcon(), qui ne recrée rien.
+  const selectedIdRef = useRef(selectedId);
+  useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
 
   // Palette et icônes par catégorie d'établissement, dérivées des spécialités publiées
   // (icone/couleur en base) — plus de liste fermée codée en dur ici.
@@ -281,13 +293,14 @@ export default function InteractiveMap({
 
     layerGroup.clearLayers();
     markersRef.current = {};
+    categorieParIdRef.current = {};
 
     if (establishments.length === 0) return;
     const bounds: L.LatLngTuple[] = [];
     const nouveauxMarqueurs: L.Marker[] = [];
 
     establishments.forEach((etab) => {
-      const marker = L.marker([etab.latitude, etab.longitude], { icon: createSvgIcon(etab.categorie, etab.id === selectedId) });
+      const marker = L.marker([etab.latitude, etab.longitude], { icon: createSvgIcon(etab.categorie, etab.id === selectedIdRef.current) });
 
       const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${etab.latitude},${etab.longitude}&query_place_id=${encodeURIComponent(etab.placeId)}`;
       const categorie = echapperHtml(etab.categorie);
@@ -333,6 +346,7 @@ export default function InteractiveMap({
       });
 
       markersRef.current[etab.id] = marker;
+      categorieParIdRef.current[etab.id] = etab.categorie;
       nouveauxMarqueurs.push(marker);
       bounds.push([etab.latitude, etab.longitude]);
     });
@@ -347,14 +361,14 @@ export default function InteractiveMap({
     // déclustering) est déjà géré par l'effet [center, zoom] ci-dessous — fitBounds
     // recalculerait sa propre valeur pour englober tous les établissements de la ville
     // avec sa marge, ce qui peut redescendre sous ZOOM_VILLE et réactiver le clustering.
-    if (villeSelectionnee || selectedId) return;
+    if (villeSelectionnee || selectedIdRef.current) return;
 
     if (bounds.length > 1) {
       map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
     } else if (bounds.length === 1) {
       map.setView(bounds[0], 12);
     }
-  }, [establishments, CATEGORY_CONFIG, villeSelectionnee, selectedId]);
+  }, [establishments, CATEGORY_CONFIG, villeSelectionnee]);
 
   // Focus externe
   useEffect(() => {
@@ -362,7 +376,19 @@ export default function InteractiveMap({
     const clusterGroup = layerGroupRef.current;
     if (!map || !clusterGroup || !selectedId || !markersRef.current[selectedId]) return;
     const marker = markersRef.current[selectedId];
-    establishments.forEach((e) => { if (markersRef.current[e.id]) markersRef.current[e.id].setIcon(createSvgIcon(e.categorie, e.id === selectedId)); });
+
+    // Ne retouche que les deux marqueurs dont l'état de sélection change réellement — reparcourir
+    // establishments (des milliers d'entrées pour une grande ville) pour reconstruire l'icône de
+    // CHAQUE marqueur à chaque clic, alors que 2 au plus changent d'apparence, rendait un simple
+    // clic perceptiblement lent (mesuré : plusieurs secondes sur Casablanca, ~3700 établissements).
+    const previousId = previousSelectedIdRef.current;
+    if (previousId && previousId !== selectedId && markersRef.current[previousId]) {
+      const categoriePrecedente = categorieParIdRef.current[previousId];
+      if (categoriePrecedente) markersRef.current[previousId].setIcon(createSvgIcon(categoriePrecedente, false));
+    }
+    const categorieSelectionnee = categorieParIdRef.current[selectedId];
+    if (categorieSelectionnee) marker.setIcon(createSvgIcon(categorieSelectionnee, true));
+    previousSelectedIdRef.current = selectedId;
     // Un marqueur "avalé" dans un cluster n'est pas ajouté au DOM tant qu'on ne dézoome/spiderfy
     // pas dessus — un simple flyTo() + openPopup() ne l'affichait donc pas pour les établissements
     // regroupés (bug remonté par l'utilisateur). zoomToShowLayer gère ce dé-clustering avant
