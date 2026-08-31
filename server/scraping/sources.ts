@@ -99,13 +99,19 @@ export async function scrapeDoctori(specialite: string, villeSlug: string): Prom
 // Couvre aussi PagesJaunes.ma : ce domaine redirige (301) vers telecontact.ma/liens/..., donc
 // même contenu, même structure de page — un scraper séparé ne produirait que des doublons.
 //
-// Deux bugs corrigés après avoir constaté un "0 résultat" suspect sur des recherches qui ont
+// Bugs corrigés après avoir constaté un "0 résultat" suspect sur des recherches qui ont
 // pourtant de vraies fiches (vérifié en rechargeant la page directement) :
-// 1. Le site a inversé l'ordre des attributs data- depuis l'écriture de ce scraper —
-//    data-code-firme précède maintenant data-rs-comp, jamais l'inverse — donc le regex d'origine
-//    (qui cherchait data-rs-comp PUIS data-code-firme) ne matchait plus jamais rien.
-// 2. Pagination jamais suivie (≈20 fiches par page) — on ne récupérait que la première page,
+// 1. Pagination jamais suivie (≈20 fiches par page) — on ne récupérait que la première page,
 //    perdant tranquillement le reste sans erreur ni signal visible.
+// 2. Deux gabarits de carte coexistent sur une même page de résultats, avec l'ordre des attributs
+//    data- INVERSÉ entre eux : `.result-search-item-entreprise` (data-code-firme PUIS
+//    data-rs-comp) et `.result-search-item-profession` (data-rs-comp PUIS data-code-firme) — ce
+//    dernier couvre les praticiens individuels, la cible principale d'un annuaire de médecins.
+//    Un regex qui suppose un seul ordre fixe (comme l'original) matche un gabarit et rate
+//    silencieusement l'autre (vérifié en direct : 3 fiches sur 20 perdues sur une page-test,
+//    toutes des praticiens individuels). On isole donc chaque balise <div> d'ouverture (les deux
+//    attributs y figurent toujours ensemble, jamais séparés par un `>` dans nos échantillons) et
+//    on y cherche les deux attributs indépendamment de leur ordre.
 function extraireNumeroPageMax(html: string): number {
   const numeros = [...html.matchAll(/[?&]page=(\d+)/g)].map((m) => Number(m[1]));
   return numeros.length > 0 ? Math.max(...numeros) : 1;
@@ -113,14 +119,15 @@ function extraireNumeroPageMax(html: string): number {
 
 function extraireFichesDunePage(html: string): FicheScrapee[] {
   const resultats: FicheScrapee[] = [];
-  const blocRegex = /data-code-firme="(\d+)"[\s\S]{0,50}?data-rs-comp="([^"]+)"/g;
-  let m: RegExpExecArray | null;
-  while ((m = blocRegex.exec(html)) !== null) {
-    const zoneApres = html.slice(m.index, m.index + 3000);
+  for (const balise of html.matchAll(/<div\b[^>]*>/g)) {
+    const nomMatch = balise[0].match(/data-rs-comp="([^"]+)"/);
+    if (!nomMatch || !/data-code-firme="\d+"/.test(balise[0])) continue;
+
+    const zoneApres = html.slice(balise.index, balise.index + 3000);
     const adresseMatch = zoneApres.match(/itemprop="streetAddress">\s*([^<]+?)\s*</);
     const telMatch = zoneApres.match(/itemprop="telephone">\s*([^<]+?)\s*</);
     resultats.push({
-      nom: m[2],
+      nom: nomMatch[1],
       adresse: adresseMatch ? adresseMatch[1].replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim() : null,
       telephone: telMatch ? telMatch[1].trim() : null,
       lat: null,
