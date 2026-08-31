@@ -4,12 +4,13 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Target, Info, Stethoscope, Eye, Building2, HeartPulse, Brain, Activity, Bone, Syringe, Microscope, TrendingUp, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { Target, Info, TrendingUp, SlidersHorizontal } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 // LE GÉNÉRATEUR UNIVERSEL ET SES CONFIGURATIONS (L'ADN)
 import BusinessPlanGenerator from './BusinessPlanGenerator';
 import { Etablissement, VilleGeo } from '../types';
+import { ICONES, ICONE_DEFAUT } from '../config/specialiteVisuels';
 
 interface SpecialitePoids {
   prix: number;
@@ -53,8 +54,6 @@ const CRITERES: { key: CritereKey; label: string }[] = [
   { key: 'concurrence', label: 'Faible concurrence' },
   { key: 'autresSpecialites', label: "Présence d'autres spécialités" }, // NOUVEAU CURSEUR
 ];
-
-const ICONES: Record<string, LucideIcon> = { Stethoscope, Eye, Building2, HeartPulse, Brain, Activity, Bone, Syringe, Microscope };
 
 const COULEURS: Record<string, { actif: string; icone: string }> = {
   blue: { actif: 'bg-blue-600/20 border-blue-500', icone: 'text-blue-400' },
@@ -230,7 +229,7 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
         {specialites.map((s) => {
-          const Icone = ICONES[s.icone] ?? Stethoscope;
+          const Icone = ICONES[s.icone] ?? ICONE_DEFAUT;
           const couleurs = COULEURS[s.couleur] ?? COULEURS.blue;
           const actif = selectedSpecialty === s.id;
           return (
