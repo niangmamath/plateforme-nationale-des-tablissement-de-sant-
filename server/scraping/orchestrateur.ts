@@ -40,6 +40,10 @@ export interface ScrapingSummary {
   geocodageEchecs: string[];
 }
 
+// Rayon au-delà duquel une coordonnée (native ou géocodée par nous) est considérée comme hors de
+// la ville ciblée, même si elle tombe bien "dans le Maroc" — voir les deux usages plus bas.
+const SEUIL_HORS_VILLE_METRES = 30000;
+
 async function chargerCentroideVille(pool: Pool, ville: string): Promise<{ lat: number; lng: number } | null> {
   const { rows } = await pool.query(`SELECT lat, lng FROM villes WHERE nom = $1`, [ville]);
   if (rows.length === 0) return null;
@@ -152,6 +156,13 @@ export async function scraperEtInserer(pool: Pool, config: ScrapingConfig): Prom
   // notre géocodage. Un lat/lng hors du Maroc ou avec lat === lng est donc traité comme absent,
   // pour forcer le géocodage par adresse (fiable, voir plus bas) plutôt que d'insérer une position
   // trompeuse telle quelle.
+  //
+  // "dans le Maroc" ne suffit pas non plus pour une coordonnée native : constaté en prod, une
+  // fiche Doctori.ma pour Casablanca (adresse texte correcte, ville="Casablanca" côté source aussi)
+  // avec un lat/lng pointant en réalité sur Agadir — à ~360km, toujours "dans le Maroc" donc
+  // invisible pour dansLeMaroc seule. Le garde-fou "à plus de SEUIL_HORS_VILLE_METRES du centroïde"
+  // (voir plus bas, ligne ~215) n'était appliqué qu'au résultat de NOTRE géocodage, jamais aux
+  // coordonnées natives de la source — angle mort corrigé ici en l'appliquant aussi ici.
   const dansLeMaroc = (lat: number, lng: number) => lat >= 20.5 && lat <= 36.5 && lng >= -17.5 && lng <= -0.5 && lat !== lng;
   const brut = brutBrut.map((f) => {
     if (f.lat != null && f.lng != null && !dansLeMaroc(f.lat, f.lng)) {
@@ -159,7 +170,7 @@ export async function scraperEtInserer(pool: Pool, config: ScrapingConfig): Prom
     }
     if (centroideVille && f.lat != null && f.lng != null) {
       const distCentroide = distanceGpsMetres(f.lat, f.lng, centroideVille.lat, centroideVille.lng);
-      if (distCentroide < 100) return { ...f, lat: null, lng: null };
+      if (distCentroide < 100 || distCentroide > SEUIL_HORS_VILLE_METRES) return { ...f, lat: null, lng: null };
     }
     return f;
   });
@@ -202,10 +213,11 @@ export async function scraperEtInserer(pool: Pool, config: ScrapingConfig): Prom
       // vers la même rue d'UNE AUTRE ville marocaine — toujours "dans le Maroc", donc invisible
       // pour ce garde-fou. Constaté en prod : des dizaines de fiches "Tanger" (adresse text
       // correcte) géocodées à Tétouan, Larache, Al Hoceima, voire Nador — jamais détecté avant
-      // insertion. On rejette donc aussi tout résultat à plus de 30km du centroïde de la ville
-      // ciblée (même seuil de repli qu'extraction.ts pour la recherche Google Places).
+      // insertion. On rejette donc aussi tout résultat à plus de SEUIL_HORS_VILLE_METRES du
+      // centroïde de la ville ciblée (même seuil de repli qu'extraction.ts pour la recherche
+      // Google Places, et que le nettoyage des coordonnées natives plus haut).
       const horsVilleCible =
-        centroideVille != null && geo != null && distanceGpsMetres(geo.lat, geo.lng, centroideVille.lat, centroideVille.lng) > 30000;
+        centroideVille != null && geo != null && distanceGpsMetres(geo.lat, geo.lng, centroideVille.lat, centroideVille.lng) > SEUIL_HORS_VILLE_METRES;
       if (!geo || !dansLeMaroc(geo.lat, geo.lng) || horsVilleCible) {
         geocodageEchecs.push(candidat.nom);
         continue; // pas de coordonnées fiables = pas d'insertion possible (latitude/longitude NOT NULL)
