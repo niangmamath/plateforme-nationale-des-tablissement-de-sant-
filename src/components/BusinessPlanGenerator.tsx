@@ -32,12 +32,21 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
   const [newMachinePrix, setNewMachinePrix] = useState('');
 
   const [actes, setActes] = useState<any[]>([]);
+  const [newActeNom, setNewActeNom] = useState('');
+  const [newActeNbrJour, setNewActeNbrJour] = useState('');
+  const [newActePrixUnitaire, setNewActePrixUnitaire] = useState('');
 
   // Programme d'investissement et plan de financement — éditables (auparavant figés : frais
   // préliminaires et BFR ignoraient la config, apport/crédit codés en dur à 11 %/89 %).
   const [fraisPreliminaires, setFraisPreliminaires] = useState<number>(0);
   const [bfr, setBfr] = useState<number>(0);
   const [pourcentApport, setPourcentApport] = useState<number>(11);
+
+  // Indice foncier (prix d'achat ou loyer au m²) — figé sur la valeur de la zone par défaut, mais
+  // modifiable : ces prix sont des estimations de marché, pas des constantes, et c'est justement
+  // ce qui détermine "Achat du Local" dans le programme d'investissement plus bas.
+  const [prixM2, setPrixM2] = useState<number>(0);
+  const [loyerM2Etat, setLoyerM2Etat] = useState<number>(0);
 
   // Synchronisation de la configuration entrante avec les états éditables
   useEffect(() => {
@@ -50,6 +59,13 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
       setBfr(config.bfr || 25000);
     }
   }, [config]);
+
+  useEffect(() => {
+    if (area) {
+      setPrixM2(area.prixM2 || 10000);
+      setLoyerM2Etat(area.loyerM2 || 65);
+    }
+  }, [area]);
 
   if (!isOpen || !area || !config) return null;
 
@@ -82,10 +98,22 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
   };
 
   const handleUpdateActe = (id: number, field: 'nom' | 'nbrJour' | 'prixUnitaire', value: string | number) => setActes(actes.map(a => a.id === id ? { ...a, [field]: value } : a));
+  const handleRemoveActe = (id: number) => setActes(actes.filter(a => a.id !== id));
+  const handleAddActe = () => {
+    if (newActeNom && newActeNbrJour && newActePrixUnitaire) {
+      setActes([...actes, { id: Date.now(), type: null, nom: newActeNom, nbrJour: parseFloat(newActeNbrJour), prixUnitaire: parseFloat(newActePrixUnitaire) }]);
+      setNewActeNom(''); setNewActeNbrJour(''); setNewActePrixUnitaire('');
+    }
+  };
 
   // --- CALCULS MATHÉMATIQUES GLOBAUX ---
+  const surfaceInitiale = config.surfaceDefaut || 80;
+
   const baseAmenagementHT = amenagements.reduce((acc, curr) => acc + curr.prix, 0);
-  const surcoutSurfaceHT = (surface - 80) * 1500; 
+  // Corrigé : comparait auparavant à 80m² en dur, quelle que soit la surface par défaut réelle de
+  // la spécialité (config.surfaceDefaut) — un surcoût apparaissait à tort dès que la surface
+  // différait de 80m², même pour une spécialité dont la surface par défaut est différente.
+  const surcoutSurfaceHT = (surface - surfaceInitiale) * 1500;
   const totalAmenagementHT = baseAmenagementHT + surcoutSurfaceHT;
   const totalAmenagementTTC = totalAmenagementHT * 1.20;
 
@@ -95,12 +123,10 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
   const tvaMateriel = totalMaterielHT * 0.20;
   const totalMaterielTTC = totalMaterielHT + tvaMateriel;
 
-  // Utilisation dynamique des prix de l'area (au lieu du dictionnaire figé)
-  const loyerM2 = area.loyerM2 || 65; 
-  const loyerMensuel = surface * loyerM2;
-  const investissementFoncier = typeOccupation === 'achat' ? surface * (area.prixM2 || 10000) : loyerMensuel * 4;
-
-  const surfaceInitiale = config.surfaceDefaut || 80;
+  // prixM2/loyerM2Etat : états éditables (voir plus haut), initialisés depuis area mais
+  // ajustables — c'est ce qui permet de modifier "Achat du Local" / "Frais d'installation".
+  const loyerMensuel = surface * loyerM2Etat;
+  const investissementFoncier = typeOccupation === 'achat' ? surface * prixM2 : loyerMensuel * 4;
 
   // Initialisation de la surface une seule fois au chargement
   useEffect(() => {
@@ -151,8 +177,15 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
                 <input type="number" value={surface} onChange={(e) => setSurface(Number(e.target.value))} className="w-28 px-4 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center" />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-slate-500 uppercase">Indice Foncier</label>
-                <div className="px-4 py-2 bg-slate-100 rounded-xl font-bold text-slate-700 text-lg">{typeOccupation === 'achat' ? `${(area.prixM2 || 10000).toLocaleString('fr-FR')} DH/m²` : `${loyerM2} DH/m²/mois`}</div>
+                <label className="text-xs font-bold text-slate-500 uppercase">{typeOccupation === 'achat' ? 'Prix au m² (Achat)' : 'Loyer au m²/mois'}</label>
+                <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-300 rounded-xl focus-within:ring-2 focus-within:ring-blue-500">
+                  {typeOccupation === 'achat' ? (
+                    <input type="number" value={prixM2} onChange={(e) => setPrixM2(Number(e.target.value) || 0)} className="w-24 bg-transparent font-black text-blue-700 text-lg outline-none text-center" />
+                  ) : (
+                    <input type="number" value={loyerM2Etat} onChange={(e) => setLoyerM2Etat(Number(e.target.value) || 0)} className="w-24 bg-transparent font-black text-blue-700 text-lg outline-none text-center" />
+                  )}
+                  <span className="text-xs font-bold text-slate-400 whitespace-nowrap">DH/m²{typeOccupation === 'location' ? '/mois' : ''}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -176,8 +209,8 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
                     <td className="border border-slate-300 p-1"><input type="number" placeholder="Prix" value={newAmenagementPrix} onChange={(e) => setNewAmenagementPrix(e.target.value)} className="w-full p-1 text-xs text-right" /></td>
                     <td className="border border-slate-300 p-1 text-center"><button onClick={handleAddAmenagement} className="bg-blue-600 text-white p-1.5 rounded"><Plus className="h-3 w-3 mx-auto" /></button></td>
                   </tr>
-                  {surface !== 80 && (
-                    <tr className="bg-blue-50/50"><td className="border border-slate-300 p-2 text-blue-700 font-medium">Ajustement surface ({surface} m²)</td><td className="border border-slate-300 p-2 text-right font-bold text-blue-700">{formatHT(surcoutSurfaceHT)}</td><td className="border border-slate-300 print:hidden"></td></tr>
+                  {surface !== surfaceInitiale && (
+                    <tr className="bg-blue-50/50"><td className="border border-slate-300 p-2 text-blue-700 font-medium">Ajustement surface ({surface} m² vs {surfaceInitiale} m² référence)</td><td className="border border-slate-300 p-2 text-right font-bold text-blue-700">{formatHT(surcoutSurfaceHT)}</td><td className="border border-slate-300 print:hidden"></td></tr>
                   )}
                   <tr className="bg-slate-900 text-white"><td className="border border-slate-900 p-2 text-right font-black">PT TTC Aménagement :</td><td className="border border-slate-900 p-2 text-right font-black text-sm" colSpan={2}>{formatHT(totalAmenagementTTC)}</td></tr>
                 </tbody>
@@ -237,7 +270,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
           <div className="page-break-inside-avoid mb-10">
             <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">IV. Chiffre d'Affaires Prévisionnel<span className="text-[10px] font-normal text-slate-500 uppercase print:hidden">Édition activée</span></h3>
             <table className="w-full text-xs border-collapse border border-slate-300 bg-white">
-              <thead><tr className="bg-slate-100"><th className="border p-3 text-left">Nature des actes</th><th className="border p-3 text-center">Actes/Jour</th><th className="border p-3 text-center">Tarif Moyen (DH)</th><th className="border p-3 text-right">CA Quotidien</th></tr></thead>
+              <thead><tr className="bg-slate-100"><th className="border p-3 text-left">Nature des actes</th><th className="border p-3 text-center">Actes/Jour</th><th className="border p-3 text-center">Tarif Moyen (DH)</th><th className="border p-3 text-right">CA Quotidien</th><th className="border p-3 w-8 print:hidden"></th></tr></thead>
               <tbody>
                 {actes.map(acte => (
                   <tr key={acte.id} className="hover:bg-slate-50">
@@ -245,10 +278,18 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
                     <td className="border p-2"><input type="number" value={acte.nbrJour} onChange={(e) => handleUpdateActe(acte.id, 'nbrJour', parseFloat(e.target.value) || 0)} className="w-full text-center font-bold outline-none border-b border-dashed focus:border-blue-500 print:border-none text-blue-700" /></td>
                     <td className="border p-2"><input type="number" value={acte.prixUnitaire} onChange={(e) => handleUpdateActe(acte.id, 'prixUnitaire', parseFloat(e.target.value) || 0)} className="w-full text-center font-bold outline-none border-b border-dashed focus:border-blue-500 print:border-none" /></td>
                     <td className="border p-3 text-right font-bold text-slate-900">{formatHT(acte.nbrJour * acte.prixUnitaire)}</td>
+                    <td className="border p-1 text-center print:hidden"><button onClick={() => handleRemoveActe(acte.id)} className="text-rose-500"><Trash2 className="h-4 w-4 mx-auto" /></button></td>
                   </tr>
                 ))}
-                <tr className="bg-blue-50/50"><td className="border p-3 font-black text-right" colSpan={3}>TOTAL CA / JOUR :</td><td className="border p-3 font-black text-right text-lg text-blue-700">{formatHT(totalCAJour)} DH</td></tr>
-                <tr className="bg-slate-900 text-white"><td className="border p-4 font-black text-right" colSpan={3}>CA ANNUEL (Base 300 jours) :</td><td className="border p-4 font-black text-right text-xl">{formatHT(totalCAAnnee)} DH</td></tr>
+                <tr className="print:hidden bg-blue-50/30">
+                  <td className="border p-2"><input type="text" placeholder="Ajouter un acte..." value={newActeNom} onChange={(e) => setNewActeNom(e.target.value)} className="w-full p-1 text-xs" /></td>
+                  <td className="border p-2"><input type="number" placeholder="Actes/jour" value={newActeNbrJour} onChange={(e) => setNewActeNbrJour(e.target.value)} className="w-full p-1 text-xs text-center" /></td>
+                  <td className="border p-2"><input type="number" placeholder="Tarif" value={newActePrixUnitaire} onChange={(e) => setNewActePrixUnitaire(e.target.value)} className="w-full p-1 text-xs text-center" /></td>
+                  <td className="border p-2"></td>
+                  <td className="border p-2 text-center"><button onClick={handleAddActe} className="bg-blue-600 text-white p-1.5 rounded"><Plus className="h-3 w-3 mx-auto" /></button></td>
+                </tr>
+                <tr className="bg-blue-50/50"><td className="border p-3 font-black text-right" colSpan={3}>TOTAL CA / JOUR :</td><td className="border p-3 font-black text-right text-lg text-blue-700" colSpan={2}>{formatHT(totalCAJour)} DH</td></tr>
+                <tr className="bg-slate-900 text-white"><td className="border p-4 font-black text-right" colSpan={3}>CA ANNUEL (Base 300 jours) :</td><td className="border p-4 font-black text-right text-xl" colSpan={2}>{formatHT(totalCAAnnee)} DH</td></tr>
               </tbody>
             </table>
           </div>
@@ -268,7 +309,21 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
                   </tr>
                   <tr className="bg-blue-50/40">
                     <td className="border p-3 font-bold text-blue-900">{typeOccupation === 'achat' ? `Achat du Local (${surface}m²)` : `Frais d'installation (${surface}m² - Caution+Agence)`}</td>
-                    <td className="border p-3 text-right font-black text-blue-700">{formatHT(investissementFoncier)}</td>
+                    <td className="border p-1 text-right">
+                      <input
+                        type="number"
+                        value={Math.round(investissementFoncier)}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          // Repasse par prixM2/loyerM2Etat plutôt qu'un état séparé, pour que ce
+                          // montant reste toujours cohérent avec le champ "Prix au m²" des
+                          // Ajustements Généraux (les deux modifient la même donnée sous-jacente).
+                          if (typeOccupation === 'achat') setPrixM2(surface > 0 ? Math.round(val / surface) : 0);
+                          else setLoyerM2Etat(surface > 0 ? Math.round(val / (surface * 4)) : 0);
+                        }}
+                        className="w-full bg-transparent text-right font-black text-blue-700 p-2 outline-none print:border-none appearance-none"
+                      />
+                    </td>
                   </tr>
                   <tr><td className="border p-3 font-medium">Aménagements et Installations</td><td className="border p-3 text-right font-black">{formatHT(totalAmenagementTTC)}</td></tr>
                   <tr><td className="border p-3 font-medium">Matériels & Équipements Lasers</td><td className="border p-3 text-right font-black">{formatHT(totalMaterielTTC)}</td></tr>
@@ -278,6 +333,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
                       <input type="number" value={bfr} onChange={(e) => setBfr(parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-right font-black p-2 outline-none print:border-none appearance-none" />
                     </td>
                   </tr>
+                  <tr><td className="border p-3 font-medium">Masse Salariale (1er mois)</td><td className="border p-3 text-right font-black">{formatHT(masseSalariale)}</td></tr>
                   <tr className="bg-slate-900 text-white"><td className="border p-4 font-black uppercase">Total Investissement</td><td className="border p-4 text-right font-black text-lg">{formatHT(totalInvestissement)}</td></tr>
                 </tbody>
               </table>
@@ -302,12 +358,30 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
                     </td>
                     <td className="border p-4 text-right font-black text-emerald-600 text-sm">{formatDH(apportPersonnel)}</td>
                   </tr>
-                  <tr><td className="border p-4 font-medium">Crédit Sollicité</td><td className="border p-4 text-center font-black">{(100 - pourcentApport).toLocaleString('fr-FR')} %</td><td className="border p-4 text-right font-black text-rose-600 text-sm">{formatDH(creditSollicite)}</td></tr>
+                  <tr>
+                    <td className="border p-4 font-medium">Crédit Sollicité</td>
+                    <td className="border p-1 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={100 - pourcentApport}
+                          onChange={(e) => setPourcentApport(100 - Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                          className="w-12 bg-transparent text-center font-black p-1 outline-none print:border-none appearance-none"
+                        />
+                        <span className="font-black">%</span>
+                      </div>
+                    </td>
+                    <td className="border p-4 text-right font-black text-rose-600 text-sm">{formatDH(creditSollicite)}</td>
+                  </tr>
                   <tr className="bg-slate-900 text-white"><td className="border p-4 font-black uppercase">Total Financement</td><td className="border p-4 text-center font-black">100 %</td><td className="border p-4 text-right font-black text-lg">{formatHT(totalInvestissement)}</td></tr>
                 </tbody>
               </table>
             </div>
-            <p className="mt-2 text-[10px] text-slate-400 italic print:hidden">Frais préliminaires, fonds de roulement et % d'apport personnel sont modifiables ci-dessus.</p>
+            <p className="mt-2 text-[10px] text-slate-400 italic print:hidden">
+              "Aménagements", "Matériels" et "Masse Salariale" ne sont pas des cases à remplir : ce sont les totaux des tableaux I, II et III ci-dessus, mis à jour automatiquement quand vous les modifiez là-bas. Les 2 lignes "Total" font pareil avec tout le tableau. Tout le reste (frais préliminaires, achat du local, fonds de roulement, % apport/crédit) se modifie directement ici.
+            </p>
             
             <div className="mt-6 p-5 bg-[#fffdf0] border border-[#f5e3a8] rounded-xl flex items-start gap-4 print:hidden shadow-sm">
               <Landmark className="h-8 w-8 text-[#d4af37] shrink-0" />
