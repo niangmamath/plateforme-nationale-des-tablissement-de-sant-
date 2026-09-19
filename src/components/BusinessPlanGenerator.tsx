@@ -48,6 +48,33 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
   const [prixM2, setPrixM2] = useState<number>(0);
   const [loyerM2Etat, setLoyerM2Etat] = useState<number>(0);
 
+  // --- COMPTE DE PRODUITS ET CHARGES (CPC) ---
+  // Régime fiscal : une profession libérale réglementée (médecin exerçant en son nom) est exclue
+  // du régime simplifié CPU et relève de l'IR au barème progressif (RNR) ; une structure en
+  // société (typiquement Clinique Privée) relève de l'IS. Pré-rempli selon la spécialité, mais
+  // librement modifiable — c'est une donnée juridique propre à chaque projet, pas déductible du
+  // seul nom de la spécialité.
+  const [regimeFiscal, setRegimeFiscal] = useState<'IR' | 'IS'>('IR');
+  // Charges d'exploitation récurrentes (fournitures, électricité, assurance, comptabilité...) —
+  // aucune valeur par défaut n'est avancée ici : contrairement aux aménagements/machines (issus
+  // d'une recherche de marché par spécialité), ces montants n'ont pas de source fiable générique ;
+  // la liste part vide, à remplir avec des montants réels.
+  const [chargesExternes, setChargesExternes] = useState<{ id: number; nom: string; montant: number }[]>([]);
+  const [newChargeNom, setNewChargeNom] = useState('');
+  const [newChargeMontant, setNewChargeMontant] = useState('');
+  // Taux d'amortissement fiscalement admis (CGI marocain) : 10 %/10 ans pour les
+  // agencements-aménagements est un taux usuel bien documenté ; pour le matériel médical, le CGI
+  // ne publie pas de taux dédié (catégorie générale "matériel et outillage", 10 à 20 % admis selon
+  // durée de vie justifiée) — 15 % est un point de départ raisonnable, à ajuster avec un
+  // expert-comptable si besoin.
+  const [tauxAmortAmenagements, setTauxAmortAmenagements] = useState<number>(10);
+  const [tauxAmortMateriel, setTauxAmortMateriel] = useState<number>(15);
+  // Taux débiteur moyen réel pour un crédit à l'équipement au Maroc, enquête trimestrielle Bank
+  // Al-Maghrib T2 2026 (source officielle, pas une estimation) — à remplacer par le taux réel
+  // obtenu auprès de la banque si disponible.
+  const [tauxInteretCredit, setTauxInteretCredit] = useState<number>(4.65);
+  const [dureeCreditAnnees, setDureeCreditAnnees] = useState<number>(7);
+
   // Synchronisation de la configuration entrante avec les états éditables
   useEffect(() => {
     if (config) {
@@ -57,6 +84,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
       setActes([...config.actes]);
       setFraisPreliminaires(config.fraisPreliminaires || 5000);
       setBfr(config.bfr || 25000);
+      setRegimeFiscal(config.categorieEtablissement === 'Clinique Privée' ? 'IS' : 'IR');
     }
   }, [config]);
 
@@ -106,6 +134,15 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
     }
   };
 
+  const handleUpdateCharge = (id: number, field: 'nom' | 'montant', value: string | number) => setChargesExternes(chargesExternes.map(c => c.id === id ? { ...c, [field]: value } : c));
+  const handleRemoveCharge = (id: number) => setChargesExternes(chargesExternes.filter(c => c.id !== id));
+  const handleAddCharge = () => {
+    if (newChargeNom && newChargeMontant) {
+      setChargesExternes([...chargesExternes, { id: Date.now(), nom: newChargeNom, montant: parseFloat(newChargeMontant) }]);
+      setNewChargeNom(''); setNewChargeMontant('');
+    }
+  };
+
   // --- CALCULS MATHÉMATIQUES GLOBAUX ---
   const surfaceInitiale = config.surfaceDefaut || 80;
 
@@ -139,6 +176,55 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
 
   const totalCAJour = actes.reduce((acc, acte) => acc + (acte.nbrJour * acte.prixUnitaire), 0);
   const totalCAAnnee = totalCAJour * 300;
+
+  // --- COMPTE DE PRODUITS ET CHARGES (CPC) ---
+  const totalChargesExternes = chargesExternes.reduce((acc, c) => acc + c.montant, 0);
+  const loyerAnnuel = typeOccupation === 'location' ? loyerMensuel * 12 : 0;
+  const chargesPersonnelAnnuelles = masseSalariale * 12;
+  // Amortissement calculé sur la base TTC : les actes médicaux sont exonérés de TVA (art. 91 CGI),
+  // la TVA payée sur aménagements/matériel n'est donc jamais récupérable et fait partie intégrante
+  // du coût à amortir — ce n'est pas une approximation, c'est la conséquence directe de
+  // l'exonération.
+  const dotationAmortissement = totalAmenagementTTC * (tauxAmortAmenagements / 100) + totalMaterielTTC * (tauxAmortMateriel / 100);
+
+  const resultatExploitation = totalCAAnnee - totalChargesExternes - loyerAnnuel - chargesPersonnelAnnuelles - dotationAmortissement;
+
+  // Intérêts de la 1ère année d'un prêt à annuités constantes : le capital restant dû est encore
+  // intégral au début de l'exercice, donc intérêts = capital × taux (pas une moyenne lissée sur
+  // toute la durée — un vrai tableau d'amortissement de prêt a des intérêts dégressifs d'année en
+  // année, ceci n'est que l'année 1, la plus chargée en intérêts).
+  const interetsAnnee1 = creditSollicite * (tauxInteretCredit / 100);
+
+  const resultatAvantImpot = resultatExploitation - interetsAnnee1;
+
+  // Barème IR 2026 (officiel, source DGI) — profession libérale réglementée au régime RNR.
+  const BAREME_IR_2026 = [
+    { max: 40000, taux: 0, deduire: 0 },
+    { max: 60000, taux: 0.10, deduire: 4000 },
+    { max: 80000, taux: 0.20, deduire: 10000 },
+    { max: 100000, taux: 0.30, deduire: 18000 },
+    { max: 180000, taux: 0.34, deduire: 22000 },
+    { max: Infinity, taux: 0.37, deduire: 27400 },
+  ];
+  const calculerIR = (rni: number): number => {
+    if (rni <= 0) return 0;
+    const tranche = BAREME_IR_2026.find((t) => rni <= t.max)!;
+    return Math.max(0, rni * tranche.taux - tranche.deduire);
+  };
+  // IS 2026 : taux unique 20 % (convergence LF2023 achevée) + Contribution Sociale de Solidarité
+  // (CSS) au-delà de 1M DH de bénéfice net fiscal — ne concerne en pratique que Clinique Privée.
+  const calculerIS = (benefice: number): number => {
+    if (benefice <= 0) return 0;
+    const is = benefice * 0.20;
+    let tauxCSS = 0;
+    if (benefice > 40000000) tauxCSS = 0.05;
+    else if (benefice > 10000000) tauxCSS = 0.035;
+    else if (benefice > 5000000) tauxCSS = 0.025;
+    else if (benefice > 1000000) tauxCSS = 0.015;
+    return is + benefice * tauxCSS;
+  };
+  const impot = regimeFiscal === 'IR' ? calculerIR(resultatAvantImpot) : calculerIS(resultatAvantImpot);
+  const resultatNet = resultatAvantImpot - impot;
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 print:p-0 print:static">
@@ -390,6 +476,85 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
                 <p className="text-sm text-[#a3801f]">Enregistrez ce PDF pour le transmettre à la banque concernant le crédit de <strong className="font-black">{formatDH(creditSollicite)}</strong> pour votre projet.</p>
               </div>
             </div>
+          </div>
+
+          {/* COMPTE DE PRODUITS ET CHARGES */}
+          <div className="page-break-inside-avoid mb-10">
+            <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">VI. Compte de Produits et Charges (CPC)<span className="text-[10px] font-normal text-slate-500 uppercase print:hidden">Édition activée</span></h3>
+
+            {/* Hypothèses fiscales et financières */}
+            <div className="mb-6 p-5 bg-white rounded-2xl border border-slate-200 shadow-sm print:hidden">
+              <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-3">Hypothèses (régime fiscal, amortissements, crédit)</h4>
+              <div className="flex flex-wrap items-end gap-6">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Régime fiscal</label>
+                  <select value={regimeFiscal} onChange={(e) => setRegimeFiscal(e.target.value as 'IR' | 'IS')} className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                    <option value="IR">IR — barème progressif (profession libérale, RNR)</option>
+                    <option value="IS">IS — 20 % (société)</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Amort. Aménagements (%/an)</label>
+                  <input type="number" step="0.5" value={tauxAmortAmenagements} onChange={(e) => setTauxAmortAmenagements(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Amort. Matériel (%/an)</label>
+                  <input type="number" step="0.5" value={tauxAmortMateriel} onChange={(e) => setTauxAmortMateriel(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Taux crédit (%/an)</label>
+                  <input type="number" step="0.05" value={tauxInteretCredit} onChange={(e) => setTauxInteretCredit(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Durée crédit (ans)</label>
+                  <input type="number" value={dureeCreditAnnees} onChange={(e) => setDureeCreditAnnees(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+              <p className="mt-3 text-[10px] text-slate-400 italic">
+                Défauts sourcés : amort. aménagements 10 % (taux CGI usuel) ; amort. matériel 15 % (catégorie générale "matériel et outillage", 10-20 % admis — à confirmer avec un expert-comptable, aucun taux CGI spécifique au matériel médical) ; taux crédit 4,65 % (taux débiteur moyen crédit équipement, enquête Bank Al-Maghrib T2 2026). Régime IR = barème progressif marocain 2026 ; régime IS = 20 % (+ CSS au-delà de 1M DH de bénéfice).
+              </p>
+            </div>
+
+            {/* Charges externes */}
+            <table className="w-full text-xs border-collapse border border-slate-300 bg-white mb-6">
+              <thead><tr className="bg-slate-100"><th className="border border-slate-300 p-2 text-left">Charges Externes (fournitures, électricité, assurance, comptabilité...)</th><th className="border border-slate-300 p-2 text-right w-24">Montant/an (DH)</th><th className="border border-slate-300 p-2 w-8 print:hidden"></th></tr></thead>
+              <tbody>
+                {chargesExternes.map(c => (
+                  <tr key={c.id} className="hover:bg-slate-50">
+                    <td className="border border-slate-300 p-2"><input type="text" value={c.nom} onChange={(e) => handleUpdateCharge(c.id, 'nom', e.target.value)} className="w-full bg-transparent font-medium outline-none print:border-none" /></td>
+                    <td className="border border-slate-300 p-2"><input type="number" value={c.montant} onChange={(e) => handleUpdateCharge(c.id, 'montant', parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-right font-bold text-slate-800 outline-none print:border-none appearance-none" /></td>
+                    <td className="border border-slate-300 p-1 text-center print:hidden"><button onClick={() => handleRemoveCharge(c.id)} className="text-rose-500"><Trash2 className="h-4 w-4 mx-auto" /></button></td>
+                  </tr>
+                ))}
+                <tr className="print:hidden bg-blue-50/30">
+                  <td className="border border-slate-300 p-1"><input type="text" placeholder="Ajouter une charge (ex: Fournitures médicales)..." value={newChargeNom} onChange={(e) => setNewChargeNom(e.target.value)} className="w-full p-1 text-xs" /></td>
+                  <td className="border border-slate-300 p-1"><input type="number" placeholder="Montant/an" value={newChargeMontant} onChange={(e) => setNewChargeMontant(e.target.value)} className="w-full p-1 text-xs text-right" /></td>
+                  <td className="border border-slate-300 p-1 text-center"><button onClick={handleAddCharge} className="bg-blue-600 text-white p-1.5 rounded"><Plus className="h-3 w-3 mx-auto" /></button></td>
+                </tr>
+                {chargesExternes.length === 0 && (
+                  <tr><td colSpan={3} className="p-3 text-center text-slate-400 italic text-[11px]">Aucune charge saisie — ajoutez vos postes réels (aucun montant type n'est proposé par défaut).</td></tr>
+                )}
+              </tbody>
+            </table>
+
+            {/* Cascade CPC */}
+            <table className="w-full text-xs border-collapse bg-white shadow-sm">
+              <tbody>
+                <tr><td className="border p-3 font-bold text-slate-900">Chiffre d'Affaires</td><td className="border p-3 text-right font-black text-emerald-700">{formatHT(totalCAAnnee)}</td></tr>
+                <tr><td className="border p-3 pl-6 text-slate-600">− Charges Externes</td><td className="border p-3 text-right font-semibold text-rose-600">{formatHT(totalChargesExternes)}</td></tr>
+                {typeOccupation === 'location' && (
+                  <tr><td className="border p-3 pl-6 text-slate-600">− Loyer Annuel</td><td className="border p-3 text-right font-semibold text-rose-600">{formatHT(loyerAnnuel)}</td></tr>
+                )}
+                <tr><td className="border p-3 pl-6 text-slate-600">− Charges de Personnel (×12)</td><td className="border p-3 text-right font-semibold text-rose-600">{formatHT(chargesPersonnelAnnuelles)}</td></tr>
+                <tr><td className="border p-3 pl-6 text-slate-600">− Dotations aux Amortissements</td><td className="border p-3 text-right font-semibold text-rose-600">{formatHT(dotationAmortissement)}</td></tr>
+                <tr className="bg-slate-100"><td className="border p-3 font-black uppercase">Résultat d'Exploitation</td><td className={`border p-3 text-right font-black ${resultatExploitation >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatHT(resultatExploitation)}</td></tr>
+                <tr><td className="border p-3 pl-6 text-slate-600">− Charges Financières (intérêts crédit, année 1)</td><td className="border p-3 text-right font-semibold text-rose-600">{formatHT(interetsAnnee1)}</td></tr>
+                <tr className="bg-slate-100"><td className="border p-3 font-black uppercase">Résultat Avant Impôt</td><td className={`border p-3 text-right font-black ${resultatAvantImpot >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatHT(resultatAvantImpot)}</td></tr>
+                <tr><td className="border p-3 pl-6 text-slate-600">− Impôt ({regimeFiscal === 'IR' ? 'IR, barème' : 'IS 20% + CSS'})</td><td className="border p-3 text-right font-semibold text-rose-600">{formatHT(impot)}</td></tr>
+                <tr className="bg-slate-900 text-white"><td className="border p-4 font-black uppercase">Résultat Net</td><td className="border p-4 text-right font-black text-lg">{formatHT(resultatNet)}</td></tr>
+              </tbody>
+            </table>
+            <p className="mt-2 text-[10px] text-slate-400 italic print:hidden">Première année d'exploitation. Les intérêts diminuent les années suivantes (capital restant dû décroissant) — le résultat net s'améliore donc mécaniquement au fil du remboursement du crédit.</p>
           </div>
 
         </div>
