@@ -511,7 +511,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
                 </div>
               </div>
               <p className="mt-3 text-[10px] text-slate-400 italic">
-                Défauts sourcés : amort. aménagements 10 % (taux CGI usuel) ; amort. matériel 15 % (catégorie générale "matériel et outillage", 10-20 % admis — à confirmer avec un expert-comptable, aucun taux CGI spécifique au matériel médical) ; taux crédit 4,65 % (taux débiteur moyen crédit équipement, enquête Bank Al-Maghrib T2 2026). Régime IR = barème progressif marocain 2026 ; régime IS = 20 % (+ CSS au-delà de 1M DH de bénéfice).
+                Valeurs pré-remplies ci-dessus, modifiables librement — sources : amort. aménagements 10 %/an (taux CGI usuel) ; amort. matériel 15 %/an (catégorie générale CGI "matériel et outillage", 10-20 % admis — à confirmer avec un expert-comptable, aucun taux spécifique publié pour le matériel médical) ; taux crédit 4,65 % (taux débiteur moyen réel du crédit équipement, enquête Bank Al-Maghrib T2 2026, remplacez par le taux de votre banque si différent). Régime IR = barème progressif marocain 2026 ; régime IS = 20 % (+ CSS au-delà de 1M DH de bénéfice).
               </p>
             </div>
 
