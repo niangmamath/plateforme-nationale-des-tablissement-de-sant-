@@ -33,6 +33,12 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
 
   const [actes, setActes] = useState<any[]>([]);
 
+  // Programme d'investissement et plan de financement — éditables (auparavant figés : frais
+  // préliminaires et BFR ignoraient la config, apport/crédit codés en dur à 11 %/89 %).
+  const [fraisPreliminaires, setFraisPreliminaires] = useState<number>(0);
+  const [bfr, setBfr] = useState<number>(0);
+  const [pourcentApport, setPourcentApport] = useState<number>(11);
+
   // Synchronisation de la configuration entrante avec les états éditables
   useEffect(() => {
     if (config) {
@@ -40,6 +46,8 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
       setEffectifs([...config.effectifs]);
       setMachines([...config.machines]);
       setActes([...config.actes]);
+      setFraisPreliminaires(config.fraisPreliminaires || 5000);
+      setBfr(config.bfr || 25000);
     }
   }, [config]);
 
@@ -92,18 +100,16 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
   const loyerMensuel = surface * loyerM2;
   const investissementFoncier = typeOccupation === 'achat' ? surface * (area.prixM2 || 10000) : loyerMensuel * 4;
 
-  const fraisPreliminaires = config.fraisPreliminaires || 5000;
-  const bfr = 25000;
   const surfaceInitiale = config.surfaceDefaut || 80;
 
   // Initialisation de la surface une seule fois au chargement
   useEffect(() => {
     if (config) setSurface(config.surfaceDefaut || 80);
   }, [config]);
-  
+
   const totalInvestissement = fraisPreliminaires + investissementFoncier + totalAmenagementTTC + totalMaterielTTC + bfr + masseSalariale;
-  const apportPersonnel = totalInvestissement * 0.11;
-  const creditSollicite = totalInvestissement * 0.89;
+  const apportPersonnel = totalInvestissement * (pourcentApport / 100);
+  const creditSollicite = totalInvestissement - apportPersonnel;
 
   const totalCAJour = actes.reduce((acc, acte) => acc + (acte.nbrJour * acte.prixUnitaire), 0);
   const totalCAAnnee = totalCAJour * 300;
@@ -249,19 +255,29 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
 
           {/* INVESTISSEMENT ET FINANCEMENT */}
           <div className="page-break-inside-avoid mb-10">
-            <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4">V. Programme d'Investissement & Financement</h3>
+            <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">V. Programme d'Investissement & Financement<span className="text-[10px] font-normal text-slate-500 uppercase print:hidden">Édition activée</span></h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <table className="w-full text-xs border-collapse bg-white shadow-sm">
                 <thead><tr><th className="border bg-slate-50 p-3 text-left font-black" colSpan={2}>Investissement (TTC)</th></tr></thead>
                 <tbody>
-                  <tr><td className="border p-3 font-medium">Frais Préliminaires</td><td className="border p-3 text-right font-black">{formatHT(fraisPreliminaires)}</td></tr>
+                  <tr>
+                    <td className="border p-3 font-medium">Frais Préliminaires</td>
+                    <td className="border p-1 text-right">
+                      <input type="number" value={fraisPreliminaires} onChange={(e) => setFraisPreliminaires(parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-right font-black p-2 outline-none print:border-none appearance-none" />
+                    </td>
+                  </tr>
                   <tr className="bg-blue-50/40">
                     <td className="border p-3 font-bold text-blue-900">{typeOccupation === 'achat' ? `Achat du Local (${surface}m²)` : `Frais d'installation (${surface}m² - Caution+Agence)`}</td>
                     <td className="border p-3 text-right font-black text-blue-700">{formatHT(investissementFoncier)}</td>
                   </tr>
                   <tr><td className="border p-3 font-medium">Aménagements et Installations</td><td className="border p-3 text-right font-black">{formatHT(totalAmenagementTTC)}</td></tr>
                   <tr><td className="border p-3 font-medium">Matériels & Équipements Lasers</td><td className="border p-3 text-right font-black">{formatHT(totalMaterielTTC)}</td></tr>
-                  <tr><td className="border p-3 font-medium">Fonds de Roulement (Produits HN)</td><td className="border p-3 text-right font-black">{formatHT(bfr)}</td></tr>
+                  <tr>
+                    <td className="border p-3 font-medium">Fonds de Roulement (Produits HN)</td>
+                    <td className="border p-1 text-right">
+                      <input type="number" value={bfr} onChange={(e) => setBfr(parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-right font-black p-2 outline-none print:border-none appearance-none" />
+                    </td>
+                  </tr>
                   <tr className="bg-slate-900 text-white"><td className="border p-4 font-black uppercase">Total Investissement</td><td className="border p-4 text-right font-black text-lg">{formatHT(totalInvestissement)}</td></tr>
                 </tbody>
               </table>
@@ -269,12 +285,29 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
               <table className="w-full text-xs border-collapse bg-white shadow-sm h-fit">
                 <thead><tr><th className="border bg-slate-50 p-3 text-left font-black" colSpan={3}>Plan de Financement</th></tr></thead>
                 <tbody>
-                  <tr><td className="border p-4 font-medium">Apport Personnel</td><td className="border p-4 text-center font-black">11 %</td><td className="border p-4 text-right font-black text-emerald-600 text-sm">{formatDH(apportPersonnel)}</td></tr>
-                  <tr><td className="border p-4 font-medium">Crédit Sollicité</td><td className="border p-4 text-center font-black">89 %</td><td className="border p-4 text-right font-black text-rose-600 text-sm">{formatDH(creditSollicite)}</td></tr>
+                  <tr>
+                    <td className="border p-4 font-medium">Apport Personnel</td>
+                    <td className="border p-1 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={pourcentApport}
+                          onChange={(e) => setPourcentApport(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                          className="w-12 bg-transparent text-center font-black p-1 outline-none print:border-none appearance-none"
+                        />
+                        <span className="font-black">%</span>
+                      </div>
+                    </td>
+                    <td className="border p-4 text-right font-black text-emerald-600 text-sm">{formatDH(apportPersonnel)}</td>
+                  </tr>
+                  <tr><td className="border p-4 font-medium">Crédit Sollicité</td><td className="border p-4 text-center font-black">{(100 - pourcentApport).toLocaleString('fr-FR')} %</td><td className="border p-4 text-right font-black text-rose-600 text-sm">{formatDH(creditSollicite)}</td></tr>
                   <tr className="bg-slate-900 text-white"><td className="border p-4 font-black uppercase">Total Financement</td><td className="border p-4 text-center font-black">100 %</td><td className="border p-4 text-right font-black text-lg">{formatHT(totalInvestissement)}</td></tr>
                 </tbody>
               </table>
             </div>
+            <p className="mt-2 text-[10px] text-slate-400 italic print:hidden">Frais préliminaires, fonds de roulement et % d'apport personnel sont modifiables ci-dessus.</p>
             
             <div className="mt-6 p-5 bg-[#fffdf0] border border-[#f5e3a8] rounded-xl flex items-start gap-4 print:hidden shadow-sm">
               <Landmark className="h-8 w-8 text-[#d4af37] shrink-0" />
