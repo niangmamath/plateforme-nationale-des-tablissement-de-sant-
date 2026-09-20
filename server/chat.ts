@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import { GoogleGenAI } from '@google/genai';
-import { getPays, getSpecialites } from './queries';
+import { getPays, getSpecialites } from './queries.js';
 
 const MODELE_GEMINI = 'gemini-2.5-flash';
 const MODELE_OPENAI = process.env.OPENAI_MODEL ?? 'gpt-4.1-mini';
