@@ -143,6 +143,12 @@ export default function App() {
     return [lat, lng];
   }, [selectedCountry]);
 
+  // Mémoïsé : InteractiveMap relance un flyTo (animation de 1,5 s) à chaque changement de
+  // référence de `center`. Avec un tableau littéral recréé à chaque rendu, tout changement d'état
+  // d'App (sélection d'une fiche, ouverture d'un formulaire...) refaisait voler la carte vers le
+  // centre de la ville — vu en mesure : rafale de tâches longues, popup déplacée.
+  const mapCenter = useMemo((): [number, number] => (selectedCity ? [selectedCity.lat, selectedCity.lng] : countryCenter), [selectedCity, countryCenter]);
+
   // Zones à plat (tous pays confondus) pour l'onglet Démographie de StatsDashboard —
   // remplace l'ancien tableau ARRONDISSEMENTS_DEMO codé en dur (Maroc uniquement).
   const allZones = useMemo(() => {
@@ -251,7 +257,7 @@ export default function App() {
               establishments={filteredEstablishments}
               selectedId={selectedId}
               onSelectEstablishment={handleSelectEstablishment}
-              center={selectedCity ? [selectedCity.lat, selectedCity.lng] : countryCenter}
+              center={mapCenter}
               zoom={selectedCity ? selectedCity.zoomBase : 6}
               villeSelectionnee={!!selectedCity}
               specialites={specialites}
