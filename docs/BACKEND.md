@@ -30,6 +30,7 @@ server/
   db.ts          # Pool pg partagé (process long-vivant)
   queries.ts     # 3 fonctions de lecture (pays, établissements, spécialités) — partagées avec api/
   extraction.ts  # Logique métier de l'extraction Google Places → insertion en base
+  signalements.ts # Validation + limite de fréquence + insertion d'un signalement utilisateur (voir §5 bis)
 
 api/
   _lib/db.ts     # Pool pg dédié au serverless (max: 3, réutilisé entre invocations "chaudes")
@@ -37,6 +38,7 @@ api/
   etablissements.ts     # GET  /api/etablissements     → getEtablissements(getPool())
   specialites.ts        # GET  /api/specialites        → getSpecialites(getPool())
   admin/extraction.ts   # POST /api/admin/extraction   → extraireEtInserer(...), protégé par secret partagé
+  signalements.ts       # POST /api/signalements       → enregistrerSignalement(...), PUBLIC (voir §5 bis)
 ```
 
 `api/*.ts` importe `server/queries.ts` avec des **extensions `.js` explicites**
@@ -54,6 +56,7 @@ Express, `express.json()` comme unique middleware, port `process.env.API_PORT ??
 | GET | `/api/etablissements` | `getEtablissements(pool)` | Liste plate des établissements publiés |
 | GET | `/api/specialites` | `getSpecialites(pool)` | Spécialités + leurs aménagements/effectifs/machines/actes |
 | POST | `/api/admin/extraction` | `extraireEtInserer(pool, ...)` | Déclenche une extraction Google Places (voir §5) |
+| POST | `/api/signalements` | `enregistrerSignalement(pool, ...)` | Enregistre un signalement utilisateur — endpoint public (voir §5 bis) |
 
 `vite.config.ts` proxy `/api` vers `http://localhost:4000` (ou `API_URL` si défini) — c'est ce qui
 permet au frontend (port `5174`) d'appeler `/api/...` en relatif sans souci de CORS en dev.
@@ -109,6 +112,29 @@ Déroulé :
 8. Retourne un résumé (`extraits`, `doublons`, `nombreNouveaux`, détail des nouveaux) — c'est ce
    JSON que Directus affiche à l'admin après un run.
 
+## 5 bis. `server/signalements.ts` — signalements utilisateur
+
+`POST /api/signalements` : **premier endpoint public en écriture** de l'appli (le chatbot est public
+mais n'écrit rien, l'extraction écrit mais exige un secret). Il alimente la table `signalements`
+(migration `019`) ; un signalement ne modifie **jamais** une fiche par lui-même — l'équipe le relit
+dans Directus (statut `nouveau` → `en_cours` → `traite`/`rejete`) et corrige la fiche à la main.
+
+Deux types, un seul corps JSON : `correction` (fiche existante : `etablissement_id` +
+`type_probleme` requis ; si `type_probleme = 'autre'`, `type_probleme_precision` est requis aussi)
+et `absence` (établissement manquant : ni l'un ni l'autre) ; dans les deux cas `nom_prenom`,
+`profession`, `message` sont requis et `email` est **facultatif** (absent/vide → `null`, s'il est
+fourni il doit être valide). Réponses : `201 {ok:true}`,
+`400 {error}` (validation), `429 {error}` (limite de fréquence), `500` générique (le détail n'est
+jamais renvoyé au client, seulement loggué — contrairement aux routes admin, §8).
+
+Garde-fous, tous dans `enregistrerSignalement` (partagée par Express et Vercel) :
+- validation stricte (listes fermées, longueurs min/max, format d'email, caractères de contrôle et
+  NUL retirés) ; la fiche visée doit exister et être publiée ;
+- **limite de fréquence par IP : 5 envois / 10 min et 20 / 24 h**, comptés sur `ip_hash` (SHA-256
+  salé de l'IP — l'IP en clair n'est jamais stockée) ; IP lue dans `x-forwarded-for` ;
+- champ leurre `site_web` : rempli (donc par un robot) → réponse `201` sans rien insérer ;
+- contraintes `CHECK` en base (cohérence type/fiche/problème) en dernier recours.
+
 ## 6. `api/` — déploiement Vercel (production)
 
 - Convention Vercel : chaque fichier de `api/` devient une route serverless du même nom
@@ -133,6 +159,7 @@ Déroulé :
 | `API_URL` | `vite.config.ts` | Cible du proxy `/api` en dev (défaut `http://localhost:4000`) |
 | `GOOGLE_PLACES_API_KEY` | `server/extraction.ts` | Requis uniquement pour `POST /api/admin/extraction` |
 | `ADMIN_EXTRACTION_SECRET` | `api/admin/extraction.ts` | Secret partagé exigé en header `x-admin-secret` (prod Vercel uniquement — absent côté `server/index.ts`) |
+| `SIGNALEMENT_IP_SALT` | `server/signalements.ts` | Optionnelle — sel du hachage d'IP ; à défaut, `ADMIN_EXTRACTION_SECRET` puis une constante |
 
 ## 8. Points d'attention
 

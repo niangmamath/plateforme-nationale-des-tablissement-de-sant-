@@ -32,6 +32,7 @@ interface InteractiveMapProps {
   zoom?: number;             // Nouvelles props pour la scalabilité
   villeSelectionnee?: boolean;
   specialites: Specialite[];
+  onReportEstablishment?: (establishment: Etablissement) => void;
 }
 
 export default function InteractiveMap({
@@ -41,7 +42,8 @@ export default function InteractiveMap({
   center = [33.5731, -7.5898], // Casablanca par défaut
   zoom = 12,
   villeSelectionnee = false,
-  specialites
+  specialites,
+  onReportEstablishment
 }: InteractiveMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -50,6 +52,7 @@ export default function InteractiveMap({
   // de rescanner tout le tableau `establishments` (des milliers d'entrées pour une grande ville)
   // juste pour retrouver la catégorie d'un des deux marqueurs dont l'icône change au clic.
   const categorieParIdRef = useRef<{ [id: string]: string }>({});
+  const etabParIdRef = useRef<{ [id: string]: Etablissement }>({});
   const previousSelectedIdRef = useRef<string | null>(null);
   const layerGroupRef = useRef<L.MarkerClusterGroup | null>(null);
 
@@ -89,6 +92,11 @@ export default function InteractiveMap({
   // setIcon(), qui ne recrée rien.
   const selectedIdRef = useRef(selectedId);
   useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
+
+  // Callback du bouton "Signaler une erreur" de la popup : lu via une ref pour que sa
+  // (ré)création côté parent ne relance jamais la reconstruction de tous les marqueurs.
+  const onReportRef = useRef(onReportEstablishment);
+  useEffect(() => { onReportRef.current = onReportEstablishment; }, [onReportEstablishment]);
 
   // Palette et icônes par catégorie d'établissement, dérivées des spécialités publiées
   // (icone/couleur en base) — plus de liste fermée codée en dur ici.
@@ -166,7 +174,23 @@ export default function InteractiveMap({
     userLocationLayerGroupRef.current = L.layerGroup().addTo(map);
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
-    return () => { map.remove(); mapRef.current = null; };
+
+    // Bouton "Signaler une erreur" de la popup : délégation d'événement plutôt qu'un onclick posé
+    // à l'ouverture. Leaflet RÉÉCRIT le HTML d'une popup déjà ouverte quand on rappelle
+    // openPopup() dessus (ce que fait l'effet "Focus externe" après un clic direct sur un
+    // marqueur) — sans ré-émettre popupopen : un onclick posé sur l'ancien bouton disparaissait
+    // alors avec lui et le bouton ne faisait plus rien. Écoute en phase de capture car Leaflet
+    // arrête la propagation des clics à l'intérieur d'une popup.
+    const surClicSignaler = (e: MouseEvent) => {
+      const bouton = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-signaler]');
+      if (!bouton) return;
+      const etab = etabParIdRef.current[bouton.getAttribute('data-signaler') ?? ''];
+      if (etab) onReportRef.current?.(etab);
+    };
+    const conteneur = map.getContainer();
+    conteneur.addEventListener('click', surClicSignaler, true);
+
+    return () => { conteneur.removeEventListener('click', surClicSignaler, true); map.remove(); mapRef.current = null; };
   }, []);
 
   useEffect(() => { mapRef.current?.flyTo(center, zoom, { animate: true, duration: 1.5 }); }, [center, zoom]);
@@ -294,6 +318,7 @@ export default function InteractiveMap({
     layerGroup.clearLayers();
     markersRef.current = {};
     categorieParIdRef.current = {};
+    etabParIdRef.current = {};
 
     if (establishments.length === 0) return;
     const bounds: L.LatLngTuple[] = [];
@@ -329,10 +354,15 @@ export default function InteractiveMap({
           <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" class="block text-center w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-2 px-2 rounded-lg text-[9px] uppercase tracking-wider shadow-sm transition-colors no-underline">
             Ouvrir Google Maps
           </a>
+          <button type="button" data-signaler="${echapperHtml(etab.id)}" class="block text-center w-full mt-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 font-black py-2 px-2 rounded-lg text-[9px] uppercase tracking-wider transition-colors cursor-pointer">
+            Signaler une erreur
+          </button>
         </div>
       `;
 
-      marker.bindPopup(popupHtml, { maxWidth: 260, className: 'custom-leaflet-popup' });
+      // autoPanPaddingTopLeft : réserve la hauteur de la barre d'outils (fonds de carte + outils)
+      // posée par-dessus la carte, sinon le haut de la popup s'ouvre dessous, illisible.
+      marker.bindPopup(popupHtml, { maxWidth: 260, className: 'custom-leaflet-popup', autoPanPaddingTopLeft: [16, 76] });
 
       // CAPTURE DU CLIC SUR UN ÉTABLISSEMENT
       marker.on('click', (e) => {
@@ -347,6 +377,7 @@ export default function InteractiveMap({
 
       markersRef.current[etab.id] = marker;
       categorieParIdRef.current[etab.id] = etab.categorie;
+      etabParIdRef.current[etab.id] = etab;
       nouveauxMarqueurs.push(marker);
       bounds.push([etab.latitude, etab.longitude]);
     });

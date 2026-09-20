@@ -5,6 +5,7 @@ import { getEtablissements, getPays, getSpecialites } from './queries';
 import { extraireEtInserer } from './extraction';
 import { extraireEtInsererZone } from './demographie';
 import { repondre, type MessageChat } from './chat';
+import { enregistrerSignalement, extraireIp, ErreurSignalement } from './signalements';
 
 const app = express();
 const PORT = process.env.API_PORT || 4000;
@@ -91,6 +92,22 @@ app.post('/api/chat', async (req, res) => {
   } catch (err: any) {
     console.error('Erreur /api/chat :', err);
     res.status(500).json({ error: err.message ?? 'Erreur inconnue.' });
+  }
+});
+
+// Signalement utilisateur (correction d'une fiche ou établissement manquant) — endpoint public
+// en écriture : validation stricte + limite de fréquence par IP dans server/signalements.ts.
+app.post('/api/signalements', async (req, res) => {
+  try {
+    await enregistrerSignalement(pool, req.body, extraireIp(req.headers['x-forwarded-for'], req.ip));
+    res.status(201).json({ ok: true });
+  } catch (err: any) {
+    if (err instanceof ErreurSignalement) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    console.error('Erreur /api/signalements :', err);
+    res.status(500).json({ error: 'Erreur serveur, réessayez plus tard.' });
   }
 });
 

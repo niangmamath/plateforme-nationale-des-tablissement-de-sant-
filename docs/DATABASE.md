@@ -75,6 +75,8 @@ Commande : `npm run db:migrate`. Idempotent — rejouable sans risque, ignore ce
 | 011 | `etablissements_date_created` | Ajoute `date_created` (tri des nouveaux établissements extraits) |
 | 012 | `specialites_criteres_communs` | Remplace les 3 critères `poids_1/2/3` (+labels) par 5 critères communs (`poids_prix`, `poids_population`, `poids_densite`, `poids_pop1559`, `poids_concurrence`) |
 | 013 | `specialites_pop60plus` | Ajoute un 6e critère commun : `poids_pop60plus` |
+| 019 | `signalements` | Crée `signalements` (corrections de fiches et établissements manquants signalés par les utilisateurs) + trigger `date_traitement` |
+| 020 | `signalements_email_facultatif` | `email` devient nullable ; ajoute `type_probleme_precision` (détail libre quand le problème est « autre ») |
 
 ## 4. Schéma
 
@@ -123,6 +125,25 @@ specialite_extraction (id PK, requete, mots_inclus jsonb, mots_exclus jsonb, typ
 Indépendante de `specialites` (coïncidence de nommage pour les 3 entrées actuelles seulement,
 cf commentaire dans la migration 010) : cette table configure la recherche Google Places
 (`server/extraction.ts`), l'autre configure le business plan/scoring.
+
+### Signalements utilisateur
+
+```
+signalements (id serial PK, type 'correction'|'absence', etablissement_id [sans FK],
+              type_probleme, type_probleme_precision [si 'autre'], nom_prenom,
+              email [facultatif], profession, message,
+              statut 'nouveau'|'en_cours'|'traite'|'rejete', note_interne,
+              date_creation, date_traitement [trigger], ip_hash)
+  index: btree(statut), btree(etablissement_id), btree(ip_hash, date_creation)
+```
+
+Alimentée par `POST /api/signalements` (public — voir [BACKEND.md §5 bis](BACKEND.md)), relue par
+l'équipe dans Directus. Un signalement ne modifie jamais `etablissements` de lui-même.
+`etablissement_id` n'a **pas de clé étrangère** (même choix que `doublon_possible_id`) : la fiche
+visée peut être supprimée/fusionnée sans invalider le signalement. Un `CHECK` impose la cohérence :
+une `correction` a une fiche et un `type_probleme`, une `absence` n'a ni l'une ni l'autre.
+`ip_hash` (SHA-256 salé, jamais l'IP en clair) ne sert qu'à la limite de fréquence.
+`date_traitement` est posée/effacée automatiquement par trigger au changement de `statut`.
 
 ## 5. Spécificité PostGIS
 

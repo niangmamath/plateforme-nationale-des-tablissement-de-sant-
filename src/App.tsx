@@ -5,6 +5,7 @@
 import ScoringSection from './components/ScoringSection';
 import ChatbotWidget from './components/ChatbotWidget';
 import ScrollToggleButton from './components/ScrollToggleButton';
+import SignalementHost, { signalerAbsence, signalerCorrection } from './components/SignalementHost';
 import React, { useState, useMemo, useEffect } from 'react';
 import { computeKpis } from './data/etablissements';
 import { Etablissement, FilterState, PaysGeo, Specialite, VilleGeo } from './types';
@@ -220,6 +221,7 @@ export default function App() {
             selectedCity={selectedCity}
             onCountryChange={setSelectedCountry}
             onCityChange={setSelectedCity}
+            onSignalerAbsence={signalerAbsence}
           />
         </section>
 
@@ -261,6 +263,7 @@ export default function App() {
               zoom={selectedCity ? selectedCity.zoomBase : 6}
               villeSelectionnee={!!selectedCity}
               specialites={specialites}
+              onReportEstablishment={signalerCorrection}
             />
           </div>
         </section>
@@ -301,6 +304,7 @@ export default function App() {
       </footer>
       <ChatbotWidget />
       <ScrollToggleButton />
+      <SignalementHost />
     </div>
   );
 }

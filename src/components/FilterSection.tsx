@@ -19,6 +19,7 @@ interface FilterSectionProps {
   selectedCity: VilleGeo | null;
   onCountryChange: (country: PaysGeo) => void;
   onCityChange: (city: VilleGeo | null) => void;
+  onSignalerAbsence: () => void;
 }
 
 export default function FilterSection({
@@ -30,7 +31,8 @@ export default function FilterSection({
   selectedCountry,
   selectedCity,
   onCountryChange,
-  onCityChange
+  onCityChange,
+  onSignalerAbsence
 }: FilterSectionProps) {
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -242,6 +244,18 @@ export default function FilterSection({
             </div>
           </div>
         </div>
+
+        <p className="text-[11px] text-slate-500 font-medium">
+          Vous ne trouvez pas votre établissement ?{' '}
+          <button
+            type="button"
+            id="btn-signaler-absence"
+            onClick={onSignalerAbsence}
+            className="font-bold text-slate-800 underline underline-offset-2 hover:text-blue-700 transition-colors cursor-pointer"
+          >
+            Signalez-le
+          </button>
+        </p>
       </div>
     </div>
   );
