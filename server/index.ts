@@ -4,7 +4,7 @@ import { pool } from './db';
 import { getEtablissements, getPays, getSpecialites } from './queries';
 import { extraireEtInserer } from './extraction';
 import { extraireEtInsererZone } from './demographie';
-import { repondre, type MessageChat } from './chat';
+import { repondre, ErreurChat, type MessageChat } from './chat';
 import { enregistrerSignalement, extraireIp, ErreurSignalement } from './signalements';
 
 const app = express();
@@ -74,12 +74,6 @@ app.post('/api/admin/extraction-zone', verifierSecretAdmin, async (req, res) => 
 // Assistant du chatbot (widget flottant) — mêmes données réelles (démographie, spécialités,
 // concurrence) que l'app, injectées dans le contexte du modèle plutôt que servies telles quelles.
 app.post('/api/chat', async (req, res) => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    res.status(500).json({ error: "GEMINI_API_KEY n'est pas configurée côté serveur." });
-    return;
-  }
-
   const { messages } = (req.body ?? {}) as { messages?: MessageChat[] };
   if (!Array.isArray(messages) || messages.length === 0) {
     res.status(400).json({ error: 'Paramètre requis : messages (tableau non vide).' });
@@ -87,11 +81,15 @@ app.post('/api/chat', async (req, res) => {
   }
 
   try {
-    const text = await repondre(pool, apiKey, messages);
+    const text = await repondre(pool, { openai: process.env.OPENAI_API_KEY, gemini: process.env.GEMINI_API_KEY }, messages);
     res.json({ text });
   } catch (err: any) {
+    if (err instanceof ErreurChat) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
     console.error('Erreur /api/chat :', err);
-    res.status(500).json({ error: err.message ?? 'Erreur inconnue.' });
+    res.status(500).json({ error: 'Erreur serveur, réessayez plus tard.' });
   }
 });
 

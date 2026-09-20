@@ -216,6 +216,18 @@ les scrapers Python `scraper_*.py`, en dehors du flux `npm run db:seed`).
   `medimplant-postgres` local (`DB_HOST: db` dans `docker-compose.yml`).
 - En prod : déployé sur Render, configuré (hors de ce repo, dans le dashboard Render) pour pointer
   sur Supabase — **la même base que l'app en production**.
+- **Collection `signalements`** (configurée dans Directus, pas versionnée ici — à reproduire par
+  l'API si l'instance est recréée) : une table Postgres existante mais non suivie s'enregistre par
+  `PATCH /collections/signalements` (jamais `POST`, qui tenterait de la recréer). Présentation
+  voulue : la fiche d'un signalement se lit comme un message — séparateurs « Rapporteur »,
+  « Fiche concernée », « Message » (champs `alias` de type `presentation-divider`, sans colonne en
+  base) — et **`statut` est le seul champ modifiable** (`select-radio`, quatre boutons) ; tous les
+  autres sont `readonly`, `note_interne`/`ip_hash`/`id` masqués. Ce verrouillage est purement
+  côté interface : un administrateur peut toujours tout modifier ou supprimer par l'API ; pour
+  l'imposer, créer un rôle dont la permission `update` est limitée au champ `statut` et sans
+  `delete`. Vue liste par défaut en `tabular` (statut/type en étiquettes, colonne Message, tri du
+  plus récent) + signet « À traiter » (`statut` ∈ nouveau, en_cours). Le layout `kanban` a été
+  essayé et s'affiche vide sur cette instance (11.17) : ne pas le réactiver sans vérifier.
 
 ## 10. Points d'attention
 

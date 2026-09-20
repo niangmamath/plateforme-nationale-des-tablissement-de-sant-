@@ -85,10 +85,7 @@ tout le reste est calculé côté client (`useMemo`).
 `BusinessPlanGenerator` (pas dans `App.tsx`), pour alimenter le module de scoring et les
 générateurs de business plan avec les poids/coûts définis en base (éditables depuis Directus).
 
-Le **`ChatbotWidget`** est un mock : les réponses sont des chaînes codées en dur, choisies par
-correspondance de mots-clés dans le message de l'utilisateur (`ChatbotWidget.tsx:42-52`) — malgré
-la présence de `GEMINI_API_KEY` dans `.env` (résidu du template AI Studio d'origine), **aucun appel
-à une API IA n'est fait dans le code actuel**.
+Le **`ChatbotWidget`** appelle `POST /api/chat` (`server/chat.ts`) : un LLM (OpenAI `gpt-4.1-mini` si `OPENAI_API_KEY` est définie, sinon Gemini via `GEMINI_API_KEY`) répond à partir des données réelles de la base (démographie par zone, pondérations de spécialités, concurrence par arrondissement — contexte resserré à la ville et à la spécialité citées dans la conversation). Aucune réponse n'est codée en dur.
 
 ## 5. Scrapers Python
 
@@ -139,9 +136,7 @@ conversation, à terme à formaliser dans un `README.md` dédié si besoin.
 - **`README.md` à la racine est un résidu du template AI Studio** ("Run and deploy your AI Studio
   app") — ne décrit ni Docker, ni Directus, ni la base de données ; à mettre à jour ou remplacer
   par un renvoi vers `docs/`.
-- **`GEMINI_API_KEY`/`APP_URL`** dans `.env`/`.env.example` ne sont utilisés par aucun code actuel
-  (vérifié par recherche dans `src/`, `server/`, `api/`) — résidus du template, sans effet sur le
-  fonctionnement réel de l'app.
+- **`APP_URL`** dans `.env`/`.env.example` n'est utilisé par aucun code actuel (résidu du template AI Studio) ; `OPENAI_API_KEY` / `GEMINI_API_KEY` alimentent en revanche le chatbot (voir BACKEND.md §7).
 - **Workflow de publication `statut`** (voir DATABASE.md §6) : central à comprendre avant de
   toucher à n'importe quel script d'insertion de données — piège déjà rencontré deux fois pendant
   le développement (colonnes de scoring désynchronisées après migration, puis données de seed

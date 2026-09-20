@@ -159,6 +159,8 @@ Garde-fous, tous dans `enregistrerSignalement` (partagée par Express et Vercel)
 | `API_URL` | `vite.config.ts` | Cible du proxy `/api` en dev (défaut `http://localhost:4000`) |
 | `GOOGLE_PLACES_API_KEY` | `server/extraction.ts` | Requis uniquement pour `POST /api/admin/extraction` |
 | `ADMIN_EXTRACTION_SECRET` | `api/admin/extraction.ts` | Secret partagé exigé en header `x-admin-secret` (prod Vercel uniquement — absent côté `server/index.ts`) |
+| `OPENAI_API_KEY` / `GEMINI_API_KEY` | `server/chat.ts` | Chatbot (`POST /api/chat`) : au moins une des deux ; OpenAI prioritaire. Sans clé, la route répond 500. Doit aussi être définie dans Vercel pour la prod |
+| `OPENAI_MODEL` | `server/chat.ts` | Optionnelle — modèle OpenAI (défaut `gpt-4.1-mini`) |
 | `SIGNALEMENT_IP_SALT` | `server/signalements.ts` | Optionnelle — sel du hachage d'IP ; à défaut, `ADMIN_EXTRACTION_SECRET` puis une constante |
 
 ## 8. Points d'attention

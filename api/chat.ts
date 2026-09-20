@@ -1,16 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getPool } from './_lib/db.js';
-import { repondre, type MessageChat } from '../server/chat.js';
+import { repondre, ErreurChat, type MessageChat } from '../server/chat.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Méthode non autorisée.' });
-    return;
-  }
-
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    res.status(500).json({ error: "GEMINI_API_KEY n'est pas configurée côté serveur." });
     return;
   }
 
@@ -21,10 +15,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const text = await repondre(getPool(), apiKey, messages);
+    const text = await repondre(getPool(), { openai: process.env.OPENAI_API_KEY, gemini: process.env.GEMINI_API_KEY }, messages);
     res.status(200).json({ text });
   } catch (err: any) {
+    if (err instanceof ErreurChat) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
     console.error('Erreur /api/chat :', err);
-    res.status(500).json({ error: err.message ?? 'Erreur inconnue.' });
+    res.status(500).json({ error: 'Erreur serveur, réessayez plus tard.' });
   }
 }
