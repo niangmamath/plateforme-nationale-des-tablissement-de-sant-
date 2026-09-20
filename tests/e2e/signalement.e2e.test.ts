@@ -7,6 +7,18 @@ import { BASE_URL } from './env.js';
 // Ces tests tournent contre la prod (ou une preview CI) : aucun ne soumet réellement le
 // formulaire, pour ne jamais créer de vrais signalements — ils vérifient l'accès aux formulaires
 // et la validation côté client (qui bloque l'envoi avant tout appel réseau).
+
+// La modale apparaît en fondu : tant qu'elle est transparente, Selenium considère son texte non
+// visible et getText() renvoie ''. On attend donc que le titre soit lisible au lieu de le lire une
+// seule fois juste après l'avoir localisé (lecture qui échouait de façon intermittente).
+async function attendreTitre(driver: WebDriver, attendu: string) {
+  await driver.wait(
+    async () => (await driver.findElement(By.id('signalement-titre')).getText()) === attendu,
+    5000,
+    `Titre de la modale « ${attendu} » non affiché`
+  );
+}
+
 describe('Signalement utilisateur', () => {
   let driver: WebDriver;
 
@@ -33,7 +45,7 @@ describe('Signalement utilisateur', () => {
     await bouton.click();
 
     const modale = await driver.wait(until.elementLocated(By.css('[role="dialog"]')), 5000);
-    expect(await modale.findElement(By.id('signalement-titre')).getText()).toBe('Signaler une erreur');
+    await attendreTitre(driver, 'Signaler une erreur');
 
     // Envoi à vide : refusé côté client, message explicite, la modale reste ouverte.
     await modale.findElement(By.css('form button[type="submit"]')).click();
@@ -78,8 +90,8 @@ describe('Signalement utilisateur', () => {
     await driver.sleep(1800); // laisse la sélection ré-ouvrir la popup avant de cliquer
 
     await driver.actions().move({ origin: await driver.findElement(By.css('.leaflet-popup [data-signaler]')) }).click().perform();
-    const modale = await driver.wait(until.elementLocated(By.css('[role="dialog"]')), 5000);
-    expect(await modale.findElement(By.id('signalement-titre')).getText()).toBe('Signaler une erreur');
+    await driver.wait(until.elementLocated(By.css('[role="dialog"]')), 5000);
+    await attendreTitre(driver, 'Signaler une erreur');
 
     const errors = await getSevereBrowserErrors(driver);
     expect(errors).toEqual([]);
@@ -94,7 +106,7 @@ describe('Signalement utilisateur', () => {
     await lien.click();
 
     const modale = await driver.wait(until.elementLocated(By.css('[role="dialog"]')), 5000);
-    expect(await modale.findElement(By.id('signalement-titre')).getText()).toBe('Signaler un établissement manquant');
+    await attendreTitre(driver, 'Signaler un établissement manquant');
     expect(await modale.findElements(By.xpath(".//legend[contains(., 'Type de problème')]"))).toHaveLength(0);
 
     await modale.findElement(By.css('form button[type="submit"]')).click();
