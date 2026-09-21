@@ -16,6 +16,7 @@ interface SpecialitePoids {
   prix: number;
   population: number;
   densite: number;
+  pop014: number;
   pop1559: number;
   pop60plus: number;
   concurrence: number;
@@ -44,11 +45,12 @@ interface SpecialiteApi {
 
 type CritereKey = keyof SpecialitePoids;
 
-// 7 critères communs à toutes les spécialités
+// 8 critères communs à toutes les spécialités
 const CRITERES: { key: CritereKey; label: string }[] = [
   { key: 'prix', label: "Pouvoir d'achat (Prix/m²)" },
   { key: 'population', label: 'Population totale' },
   { key: 'densite', label: 'Densité de population' },
+  { key: 'pop014', label: 'Population enfants (moins de 15 ans)' },
   { key: 'pop1559', label: 'Population active (15-59 ans)' },
   { key: 'pop60plus', label: 'Population sénior (60+ ans)' },
   { key: 'concurrence', label: 'Faible concurrence' },
@@ -88,7 +90,7 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
 
   // Distribution initiale par défaut (total = ~100)
   const [weights, setWeights] = useState<SpecialitePoids>({ 
-    prix: 14, population: 14, densite: 14, pop1559: 14, pop60plus: 14, concurrence: 15, autresSpecialites: 15 
+    prix: 14, population: 14, densite: 14, pop014: 0, pop1559: 14, pop60plus: 14, concurrence: 15, autresSpecialites: 15 
   });
 
   const [specialites, setSpecialites] = useState<SpecialiteApi[]>([]);
@@ -142,9 +144,18 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
   const rankedAreas = useMemo(() => {
     if (!selectedSpecialty || !zones || zones.length === 0) return [];
 
+    // Une zone sans donnée HCP prend la moyenne des zones renseignées de la ville (neutre pour ce
+    // critère) plutôt qu'une valeur inventée.
+    const moyenne = (vals: (number | null | undefined)[]) => {
+      const connues = vals.filter((v): v is number => v != null);
+      return connues.length ? connues.reduce((a, b) => a + b, 0) / connues.length : 0;
+    };
+    const moyPop014 = moyenne(zones.map(z => z.pop0_14));
+
     const enrichedZones = zones.map(zone => ({
       ...zone,
       ville: villeName,
+      pop014: zone.pop0_14 ?? moyPop014,
       pop1559: zone.pop15_59 ?? 60,
       pop60plus: zone.pop60_plus ?? 15,
       densiteVal: zone.densite ?? 0,
@@ -158,6 +169,7 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
     };
 
     const mmPrix = getMinMax('prixM2');
+    const mmPop014 = getMinMax('pop014');
     const mmPop1559 = getMinMax('pop1559');
     const mmPop60plus = getMinMax('pop60plus');
     const mmPop = getMinMax('population');
@@ -170,10 +182,11 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
       return ((val - min) / (max - min)) * 100;
     };
 
-    const totalW = weights.prix + weights.population + weights.densite + weights.pop1559 + weights.pop60plus + weights.concurrence + weights.autresSpecialites || 1;
+    const totalW = weights.prix + weights.population + weights.densite + weights.pop014 + weights.pop1559 + weights.pop60plus + weights.concurrence + weights.autresSpecialites || 1;
     const pPrix = weights.prix / totalW;
     const pPop = weights.population / totalW;
     const pDensite = weights.densite / totalW;
+    const pPop014 = weights.pop014 / totalW;
     const pPop1559 = weights.pop1559 / totalW;
     const pPop60plus = weights.pop60plus / totalW;
     const pConcurrence = weights.concurrence / totalW;
@@ -181,6 +194,7 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
 
     return enrichedZones.map(arr => {
       const normPrix = normalize(arr.prixM2, mmPrix.min, mmPrix.max);
+      const normPop014 = normalize(arr.pop014, mmPop014.min, mmPop014.max);
       const normPop1559 = normalize(arr.pop1559, mmPop1559.min, mmPop1559.max);
       const normPop60plus = normalize(arr.pop60plus, mmPop60plus.min, mmPop60plus.max);
       const normPop = normalize(arr.population, mmPop.min, mmPop.max);
@@ -190,13 +204,13 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
       // Plus il y a d'autres spécialités, meilleur est le score de ce critère (synergie)
       const normAutresSpec = normalize(arr.autresSpecCount, mmAutresSpec.min, mmAutresSpec.max);
 
-      const score = (normPrix * pPrix) + (normPop * pPop) + (normDensite * pDensite) + (normPop1559 * pPop1559) + (normPop60plus * pPop60plus) + (normConcurrence * pConcurrence) + (normAutresSpec * pAutresSpec);
+      const score = (normPrix * pPrix) + (normPop * pPop) + (normDensite * pDensite) + (normPop014 * pPop014) + (normPop1559 * pPop1559) + (normPop60plus * pPop60plus) + (normConcurrence * pConcurrence) + (normAutresSpec * pAutresSpec);
 
       return { ...arr, finalScore: Math.round(score) };
     }).sort((a, b) => b.finalScore - a.finalScore).slice(0, 10);
   }, [selectedSpecialty, weights, zones, villeName, concurrenceParZone, autresSpecialitesParZone]);
 
-  const totalW = weights.prix + weights.population + weights.densite + weights.pop1559 + weights.pop60plus + weights.concurrence + weights.autresSpecialites || 1;
+  const totalW = weights.prix + weights.population + weights.densite + weights.pop014 + weights.pop1559 + weights.pop60plus + weights.concurrence + weights.autresSpecialites || 1;
 
   const getActiveConfig = () => specialites.find((s) => s.id === selectedSpecialty) || null;
 

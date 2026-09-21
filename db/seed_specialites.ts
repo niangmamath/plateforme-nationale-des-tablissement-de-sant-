@@ -5,8 +5,8 @@ import { DERMATO_CONFIG, OPHTALMO_CONFIG, CLINIQUE_CONFIG } from '../src/config/
 // Poids/labels/couleur/cible : repris tels quels de ScoringSection.tsx (handleSelectSpecialty /
 // getLabels) et specialties.ts (cibleKey/cibleLabel), qui divergeaient légèrement entre eux.
 // Cette table devient la source unique — ScoringSection devra être branché dessus ensuite.
-// Poids des 6 critères communs : valeurs reprises de la migration 013_specialites_pop60plus.sql
-// (dernière harmonisation en date), seule source de vérité pour ces valeurs.
+// Poids des 7 critères communs : valeurs reprises des migrations 013 (pop60plus) et 023 (pop0_14,
+// justification des poids dans son en-tête), seule source de vérité pour ces valeurs.
 const SPECIALITES = [
   {
     id: 'Dermatologie',
@@ -14,7 +14,7 @@ const SPECIALITES = [
     couleur: 'blue',
     cibleKey: 'pop15_59',
     cibleLabel: 'Actifs & Jeunes (15-59 ans)',
-    poids: { prix: 35, population: 10, densite: 5, pop1559: 25, pop60plus: 10, concurrence: 15 },
+    poids: { prix: 35, population: 10, densite: 5, pop014: 0, pop1559: 25, pop60plus: 10, concurrence: 15 },
     config: DERMATO_CONFIG,
   },
   {
@@ -23,7 +23,7 @@ const SPECIALITES = [
     couleur: 'emerald',
     cibleKey: 'pop60_plus',
     cibleLabel: 'Seniors (60+ ans)',
-    poids: { prix: 10, population: 15, densite: 5, pop1559: 10, pop60plus: 35, concurrence: 25 },
+    poids: { prix: 10, population: 15, densite: 5, pop014: 5, pop1559: 10, pop60plus: 35, concurrence: 25 },
     config: OPHTALMO_CONFIG,
   },
   {
@@ -32,7 +32,7 @@ const SPECIALITES = [
     couleur: 'purple',
     cibleKey: null,
     cibleLabel: null,
-    poids: { prix: 20, population: 30, densite: 15, pop1559: 10, pop60plus: 10, concurrence: 15 },
+    poids: { prix: 20, population: 30, densite: 15, pop014: 10, pop1559: 10, pop60plus: 10, concurrence: 15 },
     config: CLINIQUE_CONFIG,
   },
 ];
@@ -52,12 +52,12 @@ async function main() {
       await client.query(
         `INSERT INTO specialites
           (id, nom, couleur, titre_business_plan, specialite_nom_bp, cible_key, cible_label,
-           poids_prix, poids_population, poids_densite, poids_pop1559, poids_pop60plus, poids_concurrence,
+           poids_prix, poids_population, poids_densite, poids_pop0_14, poids_pop1559, poids_pop60plus, poids_concurrence,
            frais_preliminaires, surface_defaut, bfr)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
         [
           s.id, s.nom, s.couleur, cfg.titre, cfg.specialiteNom, s.cibleKey, s.cibleLabel,
-          s.poids.prix, s.poids.population, s.poids.densite, s.poids.pop1559, s.poids.pop60plus, s.poids.concurrence,
+          s.poids.prix, s.poids.population, s.poids.densite, s.poids.pop014, s.poids.pop1559, s.poids.pop60plus, s.poids.concurrence,
           cfg.fraisPreliminaires ?? 5000, cfg.surfaceDefaut ?? 80, cfg.bfr ?? 25000,
         ]
       );

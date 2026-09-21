@@ -77,6 +77,9 @@ Commande : `npm run db:migrate`. Idempotent — rejouable sans risque, ignore ce
 | 013 | `specialites_pop60plus` | Ajoute un 6e critère commun : `poids_pop60plus` |
 | 019 | `signalements` | Crée `signalements` (corrections de fiches et établissements manquants signalés par les utilisateurs) + trigger `date_traitement` |
 | 020 | `signalements_email_facultatif` | `email` devient nullable ; ajoute `type_probleme_precision` (détail libre quand le problème est « autre ») |
+| 021 | `zones_pop0_14` | Ajoute `pop0_14` (part des moins de 15 ans, HCP) sur `zones` |
+| 022 | `zones_surface` | Ajoute `surface_km2` (contour OpenStreetMap) : la densité devient `population HCP / surface_km2`, vérifiable |
+| 023 | `specialites_pop0_14` | Ajoute `poids_pop0_14` (défaut 0) et fixe les poids justifiés par spécialité (Pédiatrie 40, Dentisterie/ORL/Médecine générale 20, Clinique 10, Ophtalmologie 5) |
 
 ## 4. Schéma
 
@@ -244,3 +247,8 @@ les scrapers Python `scraper_*.py`, en dehors du flux `npm run db:seed`).
   Postgres Docker local *ou* directement sur Supabase (en changeant simplement la valeur dans
   `.env`) — toujours vérifier que le script qu'on exécute (seed, migration) et le serveur qui sert
   l'API tapent sur la **même** base avant de diagnostiquer un bug de données.
+
+## Données démographiques des zones (HCP)
+
+`db/refresh_demographie_hcp.ts` relit chez HCP (RGPH 2024) la population et les parts des moins de 15 ans, 15-59 ans et 60 ans et plus de chaque zone ; sans `--apply` il affiche seulement les écarts. Une zone que HCP ne renvoie pas reste inchangée et signalée, jamais estimée. Les noms de zones qui diffèrent chez HCP passent par la table `ALIAS_HCP` de `server/demographie.ts` (Roches Noires → Asoukhour Assawda, Jnane El Ward → Jnan El Ouard, Méchouar Fès Jdid → Méchouar-Fès-El Jadid).
+`db/refresh_densite_osm.ts` mesure la surface de chaque zone sur son contour OpenStreetMap (`surface_km2`) et en déduit `densite = population / surface_km2`.

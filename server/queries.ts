@@ -21,7 +21,7 @@ export async function getPays(pool: Pool) {
   const { rows: zoneRows } = await pool.query(
     `SELECT id, ville_id AS "villeId", nom, lat, lng, population,
             prix_m2 AS "prixM2", loyer_m2 AS "loyerM2",
-            pop15_59 AS "pop15_59", pop60_plus AS "pop60_plus", densite
+            pop0_14 AS "pop0_14", pop15_59 AS "pop15_59", pop60_plus AS "pop60_plus", densite
      FROM zones WHERE statut = 'publie' ORDER BY id`
   );
 
@@ -37,6 +37,7 @@ export async function getPays(pool: Pool) {
             ...z,
             prixM2: Number(z.prixM2),
             loyerM2: Number(z.loyerM2),
+            pop0_14: z.pop0_14 !== null ? Number(z.pop0_14) : null,
             pop15_59: z.pop15_59 !== null ? Number(z.pop15_59) : null,
             pop60_plus: z.pop60_plus !== null ? Number(z.pop60_plus) : null,
             densite: z.densite !== null ? Number(z.densite) : null,
@@ -78,6 +79,7 @@ export async function getSpecialites(pool: Pool) {
       prix: s.poids_prix,
       population: s.poids_population,
       densite: s.poids_densite,
+      pop014: s.poids_pop0_14,
       pop1559: s.poids_pop1559,
       pop60plus: s.poids_pop60plus,
       concurrence: s.poids_concurrence,

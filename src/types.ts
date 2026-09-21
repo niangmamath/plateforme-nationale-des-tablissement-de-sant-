@@ -55,6 +55,7 @@ export interface ZoneGeo {
   population: number;
   prixM2: number;      // Indice à l'achat (utilisé par la carte / le module de scoring)
   loyerM2: number;     // Indice à la location
+  pop0_14?: number | null;
   pop15_59?: number | null;
   pop60_plus?: number | null;
   densite?: number | null;

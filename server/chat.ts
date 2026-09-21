@@ -89,6 +89,7 @@ async function construireContexte(pool: Pool, texteUtilisateur: string) {
       zones: v.zones.map((z) => ({
         nom: z.nom,
         population: z.population,
+        pop0_14_pct: z.pop0_14,
         pop15_59_pct: z.pop15_59,
         pop60_plus_pct: z.pop60_plus,
         densite_hab_km2: z.densite,
@@ -117,7 +118,7 @@ async function construireContexte(pool: Pool, texteUtilisateur: string) {
 const INSTRUCTION_SYSTEME = `Tu es Empower, l'assistant IA d'Empower Doctor, une plateforme qui aide les professionnels de santé, entrepreneurs, investisseurs et tout autre utilisateur à choisir où implanter un cabinet, une clinique ou un autre établissement de santé au Maroc (6 villes : Casablanca, Rabat, Salé, Fès, Marrakech, Tanger).
 
 Tu reçois à chaque message un bloc JSON "DONNÉES RÉELLES" contenant, tel qu'enregistré en base aujourd'hui :
-- demographieParVille : pour chaque ville, chaque zone/arrondissement avec sa population, la part de 15-59 ans et de 60+ ans, la densité, le prix et le loyer moyen au m².
+- demographieParVille : pour chaque ville, chaque zone/arrondissement avec sa population, la part de moins de 15 ans, de 15-59 ans et de 60+ ans, la densité, le prix et le loyer moyen au m².
 - specialites : la liste complète des spécialités actives du site (chacune y a une entrée) et la pondération que l'algorithme du site utilise pour chacune (prix, population, densité, tranche d'âge ciblée, concurrence). Une répartition égale entre les 6 critères veut dire qu'aucun ne domine pour cette spécialité — c'est une valeur normale, pas une absence de donnée.
 - concurrenceParArrondissement : le nombre de confrères déjà recensés par spécialité et par arrondissement — sers-t'en pour juger si une zone est saturée ou au contraire sous-desservie. Chaque ligne porte SA ville et les lignes d'une même ville et spécialité sont triées du plus au moins nombreux : pour "les zones les plus saturées", prends les premières lignes de la ville demandée, dans cet ordre.
 

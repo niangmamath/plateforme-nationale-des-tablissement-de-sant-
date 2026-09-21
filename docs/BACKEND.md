@@ -71,9 +71,9 @@ Trois fonctions, toutes `async (pool: Pool) => rows`, toutes filtrées `WHERE st
 - **`getPays`** — 3 requêtes séparées (`pays`, `villes`, `zones`), puis assemblage en mémoire
   (`.map`/`.filter`) en structure imbriquée `pays → villes → zones`. Les valeurs `numeric` de
   Postgres (retournées en string par `pg`) sont explicitement converties en `Number` (`prixM2`,
-  `loyerM2`, `pop15_59`, `pop60_plus`, `densite`).
+  `loyerM2`, `pop0_14`, `pop15_59`, `pop60_plus`, `densite`).
 - **`getSpecialites`** — même pattern : `specialites` + 4 requêtes filles, assemblées par
-  `specialiteId`. Reconstruit un objet `poids: { prix, population, densite, pop1559, pop60plus,
+  `specialiteId`. Reconstruit un objet `poids: { prix, population, densite, pop014, pop1559, pop60plus,
   concurrence }` à partir des colonnes `poids_*` (voir migration 012/013).
 
 C'est le **point unique** à modifier si le filtre de publication ou la forme des données exposées

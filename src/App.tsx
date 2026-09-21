@@ -160,6 +160,7 @@ export default function App() {
           ville: ville.nom,
           population: zone.population,
           densite: zone.densite ?? 0,
+          pop0_14: zone.pop0_14 ?? null,
           pop15_59: zone.pop15_59 ?? 0,
           pop60_plus: zone.pop60_plus ?? 0,
           prixM2: zone.prixM2,

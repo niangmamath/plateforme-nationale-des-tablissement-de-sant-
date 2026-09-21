@@ -14,6 +14,7 @@ interface ZoneDemographie {
   ville: string;
   population: number;
   densite: number;
+  pop0_14: number | null;
   pop15_59: number;
   pop60_plus: number;
   prixM2: number;
@@ -181,7 +182,7 @@ export default function StatsDashboard({ establishments, zones }: StatsDashboard
             {/* ONGLET DEMOGRAPHIE */}
             {activeTab === 'demographie' && (
               <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
-                <table className="w-full text-left border-collapse min-w-[950px] select-none">
+                <table className="w-full text-left border-collapse min-w-[1020px] select-none">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-[9px] uppercase font-black tracking-wider text-slate-500">
                       <th className="p-3 pl-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('nom')}>
@@ -193,7 +194,10 @@ export default function StatsDashboard({ establishments, zones }: StatsDashboard
                       <th className="p-3 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('densite')}>
                         Densité {getSortIcon('densite')}
                       </th>
-                      <th className="p-3 text-center border-l border-slate-200 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('pop15_59')}>
+                      <th className="p-3 text-center border-l border-slate-200 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('pop0_14')}>
+                        &lt; 15 ans {getSortIcon('pop0_14')}
+                      </th>
+                      <th className="p-3 text-center cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('pop15_59')}>
                         15-59 ans {getSortIcon('pop15_59')}
                       </th>
                       <th className="p-3 text-center cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('pop60_plus')}>
@@ -223,6 +227,14 @@ export default function StatsDashboard({ establishments, zones }: StatsDashboard
                         </td>
 
                         <td className="p-3 text-center border-l border-slate-50">
+                          {row.pop0_14 == null ? <span className="text-slate-300">—</span> : (
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm border ${row.pop0_14 >= 23 ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : row.pop0_14 <= 17 ? 'bg-red-50 text-red-700 border-red-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                              {row.pop0_14.toFixed(1)}%
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="p-3 text-center">
                           <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm border ${row.pop15_59 >= 62 ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : row.pop15_59 <= 59.5 ? 'bg-red-50 text-red-700 border-red-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
                             {row.pop15_59.toFixed(1)}%
                           </span>

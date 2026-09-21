@@ -7,6 +7,7 @@ import { Pool } from 'pg';
 
 export interface DemographieZone {
   population: number | null;
+  pop0_14: number | null;
   pop15_59: number | null;
   pop60_plus: number | null;
   densite: number | null;
@@ -40,7 +41,24 @@ function slugifier(s: string): string {
 // tout le Maroc), puis on désambiguïse nous-mêmes en exigeant que la commune corresponde à la
 // zone ET qu'un des segments (région/province) mentionne la ville — générique pour toute ville
 // déjà présente dans notre table `villes`, sans code à ajouter pour chaque nouvelle ville.
-async function recupererHCP(ville: string, nomZone: string): Promise<{ population: number | null; pop15_59: number | null; pop60_plus: number | null }> {
+// Noms de zone qui diffèrent chez HCP sans sous-chaîne commune (la correspondance approximative
+// ci-dessous ne peut pas les trouver). Clé : "ville/zone" normalisés ; valeur : commune HCP.
+// Chaque alias a été validé sur la liste des communes HCP de la ville, pas deviné.
+const ALIAS_HCP: Record<string, string> = {
+  'casablanca/rochesnoires': 'Asoukhour Assawda', // nom arabe de l'arrondissement des Roches Noires
+  'fes/jnaneelward': 'Jnan El Ouard',
+  'fes/mechouarfesjdid': 'Méchouar-Fès-El Jadid',
+};
+
+export interface DonneesHCP {
+  commune: string | null; // nom de la commune HCP retenue, utile pour retrouver son contour OSM
+  population: number | null;
+  pop0_14: number | null;
+  pop15_59: number | null;
+  pop60_plus: number | null;
+}
+
+export async function recupererHCP(ville: string, nomZone: string): Promise<DonneesHCP> {
   const body = {
     datasource: { id: 84, type: 'table' },
     queries: [
@@ -53,7 +71,7 @@ async function recupererHCP(ville: string, nomZone: string): Promise<{ populatio
         ],
         metrics: [{ expressionType: 'SIMPLE', column: { column_name: 'Value(valeur indicateur)' }, aggregate: 'SUM' }],
         filters: [
-          { col: 'Key(Nom indicateur)', op: 'IN', val: ['Population municipale', 'Part de la population de 15-59 ans (%)', 'Part de la population de 60 ans et plus (%)'] },
+          { col: 'Key(Nom indicateur)', op: 'IN', val: ['Population municipale', 'Part de la population de moins de 15 ans (%)', 'Part de la population de 15-59 ans (%)', 'Part de la population de 60 ans et plus (%)'] },
           // "Ensemble" (urbain + rural) plutôt que "Urbain" seul : certaines zones bien réelles
           // (ex. Tassoultante à Marrakech, 106 000 hab.) sont classées 100% rurales par HCP et
           // renvoyaient "null" à tort avec le filtre précédent.
@@ -76,7 +94,7 @@ async function recupererHCP(ville: string, nomZone: string): Promise<{ populatio
   const data: any = await res.json();
   const rows: any[] = data.result?.[0]?.data ?? [];
 
-  const cible = normaliser(nomZone);
+  const cible = normaliser(ALIAS_HCP[`${normaliser(ville)}/${normaliser(nomZone)}`] ?? nomZone);
   const villeCible = normaliser(ville);
   const candidats = rows.filter((r) => {
     const segments = String(r.Zone || '').split(' -> ');
@@ -109,8 +127,11 @@ async function recupererHCP(ville: string, nomZone: string): Promise<{ populatio
     return ligne ? Number(ligne['SUM(Value(valeur indicateur))']) : null;
   };
 
+  const communeRetenue = lignes.length ? String(lignes[0].Zone || '').split(' -> ').pop() || null : null;
   return {
+    commune: communeRetenue,
     population: valeur('Population municipale'),
+    pop0_14: valeur('Part de la population de moins de 15 ans (%)'),
     pop15_59: valeur('Part de la population de 15-59 ans (%)'),
     pop60_plus: valeur('Part de la population de 60 ans et plus (%)'),
   };
@@ -121,7 +142,7 @@ async function recupererHCP(ville: string, nomZone: string): Promise<{ populatio
 // souvent les deux entités). On ne garde que les résultats avec un vrai polygone, et on
 // retente quelques fois si besoin — plus simple et plus fiable qu'Overpass (API précise mais
 // souvent surchargée sur les instances publiques) pour ce cas précis.
-async function chercherPolygoneOSM(nomZone: string, ville: string, pays: string): Promise<any | null> {
+async function chercherPolygoneOSM(nomZone: string, ville: string, pays: string): Promise<{ geojson: any; libelle: string } | null> {
   const url = new URL('https://nominatim.openstreetmap.org/search');
   url.searchParams.set('q', `${nomZone}, ${ville}, ${pays}`);
   url.searchParams.set('format', 'jsonv2');
@@ -137,10 +158,13 @@ async function chercherPolygoneOSM(nomZone: string, ville: string, pays: string)
   // une densité absurde. On n'accepte que les résultats dont le type indique une vraie zone
   // administrative/quartier, pas un POI ponctuel qui a la forme d'un polygone par coïncidence.
   const TYPES_VALIDES = new Set(['administrative', 'suburb', 'city_district', 'quarter', 'neighbourhood', 'borough']);
+  // Une "Préfecture d'arrondissements" (pluriel) regroupe plusieurs arrondissements : son contour
+  // donnerait une surface trop grande (Ben M'sick + Sbata) et une densité fausse pour une zone.
+  const estPrefectureMultiple = (r: any) => /^\s*pr[ée]fecture d['’]arrondissements/i.test(String(r.display_name)) || /^\s*عمالة مقاطعات/.test(String(r.display_name));
   const avecPolygone = results.find(
-    (r) => r.geojson && r.geojson.type !== 'Point' && r.geojson.type !== 'LineString' && (TYPES_VALIDES.has(r.type) || TYPES_VALIDES.has(r.addresstype) || r.class === 'boundary')
+    (r) => r.geojson && !estPrefectureMultiple(r) && r.geojson.type !== 'Point' && r.geojson.type !== 'LineString' && (TYPES_VALIDES.has(r.type) || TYPES_VALIDES.has(r.addresstype) || r.class === 'boundary')
   );
-  return avecPolygone?.geojson ?? null;
+  return avecPolygone ? { geojson: avecPolygone.geojson, libelle: `${avecPolygone.type}: ${String(avecPolygone.display_name).slice(0, 80)}` } : null;
 }
 
 // Assemble les segments "outer" d'une relation Overpass en un seul anneau fermé — gère le cas
@@ -173,7 +197,7 @@ const OVERPASS_MIROIRS = ['https://overpass-api.de/api/interpreter', 'https://ov
 // Filet de sécurité quand Nominatim ne renvoie que le point (pas le contour) : interroge
 // directement Overpass pour la relation "boundary=administrative" autour du centre de la ville
 // (déjà connu via la table villes), plus lent/moins disponible que Nominatim mais plus précis.
-async function chercherPolygoneOverpass(pool: Pool, nomZone: string, ville: string): Promise<any | null> {
+async function chercherPolygoneOverpass(pool: Pool, noms: string[], ville: string): Promise<{ geojson: any; libelle: string } | null> {
   const { rows } = await pool.query('SELECT lat, lng FROM villes WHERE nom = $1', [ville]);
   if (rows.length === 0) return null;
   const lat = Number(rows[0].lat);
@@ -184,12 +208,11 @@ async function chercherPolygoneOverpass(pool: Pool, nomZone: string, ville: stri
   // accents, donc une seule normalisation dans un sens ne suffit pas. On construit une alternative
   // (accentuée|désaccentuée) pour matcher les deux orthographes quel que soit le sens du décalage.
   const echapper = (s: string) => s.replace(/[.*+?^${}()|[\]\\"]/g, '\\$&');
-  const original = echapper(nomZone);
-  const desaccente = echapper(enleverAccents(nomZone));
-  const motif = original === desaccente ? original : `${original}|${desaccente}`;
-  const requete = `[out:json][timeout:20];\nrelation["boundary"="administrative"]["name"~"${motif}",i](${lat - marge},${lng - marge},${lat + marge},${lng + marge});\nout geom;`;
+  const motif = [...new Set(noms.flatMap((n) => [echapper(n), echapper(enleverAccents(n))]))].join('|');
+  const requete = `[out:json][timeout:20];\nrelation["boundary"="administrative"]["admin_level"="10"]["name"~"${motif}",i](${lat - marge},${lng - marge},${lat + marge},${lng + marge});\nout geom;`;
 
-  for (const miroir of OVERPASS_MIROIRS) {
+  // Overpass répond souvent 504 quand il est chargé : 3 passes sur les deux miroirs avec attente.
+  for (const miroir of Array.from({ length: 3 }, () => OVERPASS_MIROIRS).flat()) {
     try {
       const res = await fetch(miroir, {
         method: 'POST',
@@ -200,13 +223,15 @@ async function chercherPolygoneOverpass(pool: Pool, nomZone: string, ville: stri
           Accept: '*/*',
         },
       });
-      if (!res.ok) continue;
+      if (!res.ok) { await new Promise((r) => setTimeout(r, 4000)); continue; }
       const data: any = await res.json();
       const relation = data.elements?.[0];
       const anneau = relation ? assemblerAnneau(relation.members ?? []) : null;
-      if (anneau) return { type: 'Polygon', coordinates: [anneau] };
+      if (anneau) return { geojson: { type: 'Polygon', coordinates: [anneau] }, libelle: `overpass: ${relation.tags?.name ?? '?'} (admin_level ${relation.tags?.admin_level ?? '?'})` };
+      if (data.elements) return null; // réponse valide sans relation : inutile de réessayer
     } catch {
       // miroir indisponible, on essaie le suivant
+      await new Promise((r) => setTimeout(r, 4000));
     }
   }
   return null;
@@ -216,16 +241,41 @@ interface SurfaceEtCentre {
   km2: number | null;
   lat: number | null;
   lng: number | null;
+  source: string | null; // contour OSM retenu (type et nom), pour pouvoir juger de sa pertinence
 }
 
-async function recupererSurfaceOSM(pool: Pool, nomZone: string, ville: string, pays: string): Promise<SurfaceEtCentre> {
+export async function recupererSurfaceOSM(pool: Pool, nomZone: string, ville: string, pays: string, nomsAlternatifs: string[] = []): Promise<SurfaceEtCentre> {
+  // OSM nomme parfois une zone autrement que nous ("Maârif" pour "El Maarif") : on essaie le nom
+  // tel quel, le nom de la commune HCP, puis la variante sans tiret. Pas de recherche sur un morceau
+  // d'un nom composé ("Charf" pour "Charf-Souani", "Marrakech" pour "Marrakech-Medina") : elle
+  // retombait sur la zone voisine ou sur la ville entière.
+  const variantes = [...new Set([
+    nomZone,
+    ...nomsAlternatifs,
+    ...(nomZone.includes('-') ? [nomZone.replace(/-/g, ' ')] : []),
+  ])];
   let geojson: any | null = null;
-  for (let tentative = 0; tentative < 2 && !geojson; tentative++) {
-    if (tentative > 0) await new Promise((r) => setTimeout(r, 1100)); // respecte la limite d'1 req/s de Nominatim
-    geojson = await chercherPolygoneOSM(nomZone, ville, pays);
+  let source: string | null = null;
+  for (const variante of variantes) {
+    for (let tentative = 0; tentative < 2 && !geojson; tentative++) {
+      if (tentative > 0) await new Promise((r) => setTimeout(r, 1100)); // respecte la limite d'1 req/s de Nominatim
+      try {
+        const trouve = await chercherPolygoneOSM(variante, ville, pays);
+        geojson = trouve?.geojson ?? null;
+        source = trouve?.libelle ?? null;
+      } catch {
+        // Nominatim injoignable ou lent : on retente puis on passe à la variante suivante
+      }
+    }
+    if (geojson) break;
+    await new Promise((r) => setTimeout(r, 1100));
   }
-  if (!geojson) geojson = await chercherPolygoneOverpass(pool, nomZone, ville);
-  if (!geojson) return { km2: null, lat: null, lng: null };
+  if (!geojson) {
+    const trouve = await chercherPolygoneOverpass(pool, variantes, ville);
+    geojson = trouve?.geojson ?? null;
+    source = trouve?.libelle ?? null;
+  }
+  if (!geojson) return { km2: null, lat: null, lng: null, source: null };
 
   // Le centroïde du même contour donne les coordonnées du centre de la zone — jusqu'ici
   // recherchées manuellement par l'admin, on les récupère "gratuitement" au passage.
@@ -241,6 +291,7 @@ async function recupererSurfaceOSM(pool: Pool, nomZone: string, ville: string, p
     km2: r?.km2 ? Number(r.km2) : null,
     lat: r?.lat != null ? Number(r.lat) : null,
     lng: r?.lng != null ? Number(r.lng) : null,
+    source,
   };
 }
 
@@ -308,6 +359,7 @@ export async function extraireDemographieZone(pool: Pool, pays: string, ville: s
 
   return {
     population: hcp.population,
+    pop0_14: hcp.pop0_14,
     pop15_59: hcp.pop15_59,
     pop60_plus: hcp.pop60_plus,
     densite,
@@ -335,6 +387,7 @@ export interface ExtractionZoneSummary {
   pays: string;
   villeCreee: boolean;
   population: number | null;
+  pop0_14: number | null;
   pop15_59: number | null;
   pop60_plus: number | null;
   densite: number | null;
@@ -393,9 +446,9 @@ export async function extraireEtInsererZone(pool: Pool, pays: string, ville: str
   const id = slugifier(nomZone);
 
   await pool.query(
-    `INSERT INTO zones (id, ville_id, nom, lat, lng, population, prix_m2, loyer_m2, pop15_59, pop60_plus, densite, statut)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'brouillon')`,
-    [id, villeRow.id, nomZone, donnees.lat, donnees.lng, donnees.population, donnees.prixM2 ?? PRIX_M2_DEFAUT, LOYER_M2_DEFAUT, donnees.pop15_59, donnees.pop60_plus, donnees.densite]
+    `INSERT INTO zones (id, ville_id, nom, lat, lng, population, prix_m2, loyer_m2, pop0_14, pop15_59, pop60_plus, densite, statut)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'brouillon')`,
+    [id, villeRow.id, nomZone, donnees.lat, donnees.lng, donnees.population, donnees.prixM2 ?? PRIX_M2_DEFAUT, LOYER_M2_DEFAUT, donnees.pop0_14, donnees.pop15_59, donnees.pop60_plus, donnees.densite]
   );
 
   return {
@@ -405,6 +458,7 @@ export async function extraireEtInsererZone(pool: Pool, pays: string, ville: str
     pays,
     villeCreee,
     population: donnees.population,
+    pop0_14: donnees.pop0_14,
     pop15_59: donnees.pop15_59,
     pop60_plus: donnees.pop60_plus,
     densite: donnees.densite,
