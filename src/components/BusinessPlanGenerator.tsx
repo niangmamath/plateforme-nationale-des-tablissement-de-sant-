@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, FileText, Calculator, CalendarDays, Landmark, Download, Plus, Trash2, Printer } from 'lucide-react';
+import { X, FileText, Calculator, CalendarDays, Landmark, Download, Plus, Trash2, Printer, Image as ImageIcon } from 'lucide-react';
 import { motion } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { JOURS_PAR_MOIS_DEFAUT, projeter } from '../utils/projectionBP';
@@ -14,6 +14,9 @@ interface BusinessPlanGeneratorProps {
 const formatDH = (num: number) => num.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' DH';
 const formatHT = (num: number) => num.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const TVA_MATERIEL = 0.20;
+const TITRE_DEFAUT = 'Étude de Faisabilité et Business Plan';
+const TYPES_LOGO = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+const TAILLE_MAX_LOGO = 2 * 1024 * 1024; // 2 Mo
 const arrondi2 = (n: number) => Math.round(n * 100) / 100;
 const NOMS_MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
@@ -32,6 +35,13 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
   const [newEffectifQte, setNewEffectifQte] = useState('');
   const [newEffectifSalaire, setNewEffectifSalaire] = useState('');
 
+  // Personnalisation du document : titre, sous-titre et logo facultatifs. Chaîne vide = valeur par
+  // défaut. Rien n'est mémorisé d'un business plan à l'autre (un titre propre à un dossier ne doit pas
+  // se retrouver sur le suivant) ; le logo est lu localement en data URL, jamais envoyé au serveur.
+  const [titrePerso, setTitrePerso] = useState('');
+  const [sousTitrePerso, setSousTitrePerso] = useState('');
+  const [logo, setLogo] = useState<string | null>(null);
+  const [logoErreur, setLogoErreur] = useState('');
   const [machines, setMachines] = useState<any[]>([]);
   // Les prix des machines sont toujours stockés HT (tout le calcul en aval part du HT) ; ce choix ne
   // change que la saisie et l'affichage : en TTC, on affiche HT × (1 + TVA) et on convertit à la saisie.
@@ -114,6 +124,28 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
       setLoyerM2Etat(area.loyerM2 || 65);
     }
   }, [area]);
+
+  // Le titre du document devient le titre de l'onglet tant que le business plan est ouvert : c'est le
+  // nom de fichier proposé par le navigateur quand on enregistre le PDF.
+  const titreAffiche = titrePerso.trim() || TITRE_DEFAUT;
+  useEffect(() => {
+    if (!isOpen) return;
+    const ancienTitre = document.title;
+    document.title = titreAffiche;
+    return () => { document.title = ancienTitre; };
+  }, [isOpen, titreAffiche]);
+
+  const handleChoisirLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fichier = e.target.files?.[0];
+    e.target.value = ''; // permet de re-choisir le même fichier après l'avoir retiré
+    if (!fichier) return;
+    if (!TYPES_LOGO.includes(fichier.type)) { setLogoErreur('Format non accepté : utilisez une image PNG, JPEG, WebP ou SVG.'); return; }
+    if (fichier.size > TAILLE_MAX_LOGO) { setLogoErreur('Image trop lourde (2 Mo maximum).'); return; }
+    const lecteur = new FileReader();
+    lecteur.onload = () => { setLogo(String(lecteur.result)); setLogoErreur(''); };
+    lecteur.onerror = () => setLogoErreur("Impossible de lire ce fichier.");
+    lecteur.readAsDataURL(fichier);
+  };
 
   if (!isOpen || !area || !config) return null;
 
@@ -277,8 +309,38 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
         {/* CORPS */}
         <div className="flex-1 overflow-y-auto p-6 md:p-10 print:p-0 bg-slate-50">
           <div className="text-center mb-10 border-b-2 border-slate-900 pb-6">
-            <h1 className="text-3xl font-black uppercase mb-2 tracking-tight">Étude de Faisabilité et Business Plan</h1>
-            <p className="text-lg font-bold text-blue-700 uppercase">{config.specialiteNom} • {area.nom}</p>
+            {logo && <img id="bp-logo-affiche" src={logo} alt="Logo" className="mx-auto mb-4 max-h-24 max-w-[260px] object-contain" />}
+            <h1 id="bp-titre-affiche" className="text-3xl font-black uppercase mb-2 tracking-tight">{titreAffiche}</h1>
+            <p id="bp-sous-titre-affiche" className="text-lg font-bold text-blue-700 uppercase">{sousTitrePerso.trim() || `${config.specialiteNom} • ${area.nom}`}</p>
+          </div>
+
+          {/* PERSONNALISATION DU DOCUMENT (titre, sous-titre, logo) */}
+          <div className="mb-10 p-5 bg-white rounded-2xl border border-slate-200 shadow-sm print:hidden" id="bp-personnalisation">
+            <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-4 flex items-center gap-2"><ImageIcon className="h-5 w-5 text-blue-600" /> Personnalisation du document</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="flex flex-col gap-1">
+                <label htmlFor="bp-titre" className="text-[10px] font-bold text-slate-500 uppercase">Titre du document</label>
+                <input id="bp-titre" type="text" maxLength={120} value={titrePerso} placeholder={TITRE_DEFAUT} onChange={(e) => setTitrePerso(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label htmlFor="bp-sous-titre" className="text-[10px] font-bold text-slate-500 uppercase">Sous-titre (nom du médecin, du cabinet…)</label>
+                <input id="bp-sous-titre" type="text" maxLength={120} value={sousTitrePerso} placeholder={`${config.specialiteNom} • ${area.nom}`} onChange={(e) => setSousTitrePerso(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            </div>
+            <div className="mt-5 flex flex-wrap items-center gap-4">
+              <div className="flex flex-col gap-1">
+                <label htmlFor="bp-logo" className="text-[10px] font-bold text-slate-500 uppercase">Logo (facultatif — PNG, JPEG, WebP ou SVG, 2 Mo max)</label>
+                <input id="bp-logo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={handleChoisirLogo} className="text-xs text-slate-600 file:mr-3 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white file:font-bold file:text-xs hover:file:bg-blue-500 file:cursor-pointer" />
+              </div>
+              {logo && (
+                <div className="flex items-center gap-3">
+                  <img src={logo} alt="Aperçu du logo" className="h-12 max-w-[120px] object-contain border border-slate-200 rounded-lg p-1 bg-white" />
+                  <button type="button" id="bp-logo-retirer" onClick={() => { setLogo(null); setLogoErreur(''); }} className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-rose-600 border border-rose-200 rounded-lg hover:bg-rose-50"><Trash2 className="h-4 w-4" /> Retirer le logo</button>
+                </div>
+              )}
+            </div>
+            {logoErreur && <p id="bp-logo-erreur" role="alert" className="mt-2 text-xs font-bold text-rose-600">{logoErreur}</p>}
+            <p className="mt-3 text-[10px] text-slate-400 italic">Le titre, le sous-titre et le logo apparaissent en haut du document et dans le PDF. Ils ne sont pas enregistrés : à ressaisir à chaque ouverture. Le logo reste dans votre navigateur, il n'est envoyé nulle part.</p>
           </div>
 
           {/* PARAMÈTRES */}
