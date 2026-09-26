@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, FileText, Calculator, Landmark, Download, Plus, Trash2, Printer } from 'lucide-react';
 import { motion } from 'motion/react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
+import { JOURS_PAR_MOIS_DEFAUT, projeter } from '../utils/projectionBP';
 
 interface BusinessPlanGeneratorProps {
   isOpen: boolean;
@@ -11,6 +13,7 @@ interface BusinessPlanGeneratorProps {
 
 const formatDH = (num: number) => num.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' DH';
 const formatHT = (num: number) => num.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+const NOMS_MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
 export default function BusinessPlanGenerator({ isOpen, onClose, area, config }: BusinessPlanGeneratorProps) {
   // --- ÉTATS DYNAMIQUES PRINCIPAUX ---
@@ -74,6 +77,18 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
   // obtenu auprès de la banque si disponible.
   const [tauxInteretCredit, setTauxInteretCredit] = useState<number>(4.65);
   const [dureeCreditAnnees, setDureeCreditAnnees] = useState<number>(7);
+
+  // --- PRÉVISIONNEL SUR 5 ANS ---
+  // Calendrier : l'année 1 va du mois de démarrage au 31 décembre (exercice civil). Les jours
+  // travaillés sont saisis mois par mois (25 par défaut = 300 j/an, l'ancienne base figée du
+  // générateur) ; ceux des mois antérieurs au démarrage ne comptent que pour les années pleines.
+  const [moisDemarrage, setMoisDemarrage] = useState<number>(1);
+  const [anneeDemarrage, setAnneeDemarrage] = useState<number>(new Date().getFullYear());
+  const [joursParMois, setJoursParMois] = useState<number[]>(() => new Array(12).fill(JOURS_PAR_MOIS_DEFAUT));
+  // Évolutions annuelles à partir de l'année 2 (décision du tuteur : +5 % sur le CA comme sur les
+  // charges), modifiables.
+  const [croissanceCAPct, setCroissanceCAPct] = useState<number>(5);
+  const [croissanceChargesPct, setCroissanceChargesPct] = useState<number>(5);
 
   // Synchronisation de la configuration entrante avec les états éditables
   useEffect(() => {
@@ -175,28 +190,11 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
   const creditSollicite = totalInvestissement - apportPersonnel;
 
   const totalCAJour = actes.reduce((acc, acte) => acc + (acte.nbrJour * acte.prixUnitaire), 0);
-  const totalCAAnnee = totalCAJour * 300;
+  const joursAnneePleine = joursParMois.reduce((acc, j) => acc + j, 0);
+  const totalCAAnnee = totalCAJour * joursAnneePleine; // année pleine ; l'année 1 réelle dépend du mois de démarrage
 
   // --- COMPTE DE PRODUITS ET CHARGES (CPC) ---
   const totalChargesExternes = chargesExternes.reduce((acc, c) => acc + c.montant, 0);
-  const loyerAnnuel = typeOccupation === 'location' ? loyerMensuel * 12 : 0;
-  const chargesPersonnelAnnuelles = masseSalariale * 12;
-  // Amortissement calculé sur la base TTC : les actes médicaux sont exonérés de TVA (art. 91 CGI),
-  // la TVA payée sur aménagements/matériel n'est donc jamais récupérable et fait partie intégrante
-  // du coût à amortir — ce n'est pas une approximation, c'est la conséquence directe de
-  // l'exonération.
-  const dotationAmortissement = totalAmenagementTTC * (tauxAmortAmenagements / 100) + totalMaterielTTC * (tauxAmortMateriel / 100);
-
-  const resultatExploitation = totalCAAnnee - totalChargesExternes - loyerAnnuel - chargesPersonnelAnnuelles - dotationAmortissement;
-
-  // Intérêts de la 1ère année d'un prêt à annuités constantes : le capital restant dû est encore
-  // intégral au début de l'exercice, donc intérêts = capital × taux (pas une moyenne lissée sur
-  // toute la durée — un vrai tableau d'amortissement de prêt a des intérêts dégressifs d'année en
-  // année, ceci n'est que l'année 1, la plus chargée en intérêts).
-  const interetsAnnee1 = creditSollicite * (tauxInteretCredit / 100);
-
-  const resultatAvantImpot = resultatExploitation - interetsAnnee1;
-
   // Barème IR 2026 (officiel, source DGI) — profession libérale réglementée au régime RNR.
   const BAREME_IR_2026 = [
     { max: 40000, taux: 0, deduire: 0 },
@@ -223,8 +221,36 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
     else if (benefice > 1000000) tauxCSS = 0.015;
     return is + benefice * tauxCSS;
   };
-  const impot = regimeFiscal === 'IR' ? calculerIR(resultatAvantImpot) : calculerIS(resultatAvantImpot);
-  const resultatNet = resultatAvantImpot - impot;
+
+  // Prévisionnel sur 5 exercices civils (calcul dans utils/projectionBP.ts, testé). Amortissement
+  // calculé sur la base TTC : les actes médicaux sont exonérés de TVA (art. 91 CGI), la TVA payée
+  // sur aménagements/matériel n'est donc jamais récupérable et fait partie intégrante du coût à
+  // amortir — ce n'est pas une approximation, c'est la conséquence directe de l'exonération.
+  const projection = projeter({
+    caParJour: totalCAJour,
+    joursParMois,
+    moisDemarrage,
+    anneeDemarrage,
+    croissanceCA: croissanceCAPct / 100,
+    croissanceCharges: croissanceChargesPct / 100,
+    chargesExternesAnnuelles: totalChargesExternes,
+    loyerMensuel: typeOccupation === 'location' ? loyerMensuel : 0,
+    masseSalarialeMensuelle: masseSalariale,
+    baseAmortAmenagements: totalAmenagementTTC,
+    tauxAmortAmenagements,
+    baseAmortMateriel: totalMaterielTTC,
+    tauxAmortMateriel,
+    credit: creditSollicite,
+    tauxCreditPct: tauxInteretCredit,
+    dureeCreditAnnees,
+    calculerImpot: regimeFiscal === 'IR' ? calculerIR : calculerIS,
+  });
+  const donneesGraphique = projection.map((l) => ({
+    annee: String(l.annee),
+    "Chiffre d'affaires": Math.round(l.ca),
+    'Charges totales': Math.round(l.chargesExternes + l.loyer + l.personnel + l.dotations + l.interets),
+    'Résultat net': Math.round(l.resultatNet),
+  }));
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 print:p-0 print:static">
@@ -375,9 +401,42 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
                   <td className="border p-2 text-center"><button onClick={handleAddActe} className="bg-blue-600 text-white p-1.5 rounded"><Plus className="h-3 w-3 mx-auto" /></button></td>
                 </tr>
                 <tr className="bg-blue-50/50"><td className="border p-3 font-black text-right" colSpan={3}>TOTAL CA / JOUR :</td><td className="border p-3 font-black text-right text-lg text-blue-700" colSpan={2}>{formatHT(totalCAJour)} DH</td></tr>
-                <tr className="bg-slate-900 text-white"><td className="border p-4 font-black text-right" colSpan={3}>CA ANNUEL (Base 300 jours) :</td><td className="border p-4 font-black text-right text-xl" colSpan={2}>{formatHT(totalCAAnnee)} DH</td></tr>
+                <tr className="bg-slate-900 text-white"><td className="border p-4 font-black text-right" colSpan={3}>CA ANNUEL (année pleine, {joursAnneePleine} jours) :</td><td className="border p-4 font-black text-right text-xl" colSpan={2}>{formatHT(totalCAAnnee)} DH</td></tr>
               </tbody>
             </table>
+
+            {/* Calendrier d'exploitation */}
+            <div className="mt-4 p-4 bg-white border border-slate-200 rounded-xl print:hidden" id="bp-calendrier">
+              <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-3">Calendrier d'exploitation</h4>
+              <div className="flex flex-wrap items-end gap-6 mb-4">
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="bp-mois-demarrage" className="text-[10px] font-bold text-slate-500 uppercase">Mois de démarrage</label>
+                  <select id="bp-mois-demarrage" value={moisDemarrage} onChange={(e) => setMoisDemarrage(Number(e.target.value))} className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    {NOMS_MOIS.map((nom, i) => <option key={nom} value={i + 1}>{nom}</option>)}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="bp-annee-demarrage" className="text-[10px] font-bold text-slate-500 uppercase">Année de démarrage</label>
+                  <input id="bp-annee-demarrage" type="number" value={anneeDemarrage} onChange={(e) => setAnneeDemarrage(Math.round(Number(e.target.value)) || new Date().getFullYear())} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="bp-jours-tous" className="text-[10px] font-bold text-slate-500 uppercase">Jours travaillés / mois (tous les mois)</label>
+                  <input id="bp-jours-tous" type="number" min={0} max={31} placeholder="ex. 22" onChange={(e) => { const v = Math.min(31, Math.max(0, parseFloat(e.target.value))); if (!Number.isNaN(v)) setJoursParMois(new Array(12).fill(v)); }} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-2">
+                {NOMS_MOIS.map((nom, i) => {
+                  const avantDemarrage = i + 1 < moisDemarrage;
+                  return (
+                    <div key={nom} className={`flex flex-col gap-1 ${avantDemarrage ? 'opacity-50' : ''}`} title={avantDemarrage ? "Avant le démarrage : ne compte qu'à partir de l'année suivante" : undefined}>
+                      <label htmlFor={`bp-jours-${i + 1}`} className="text-[10px] font-bold text-slate-500 uppercase text-center">{nom.slice(0, 4)}.</label>
+                      <input id={`bp-jours-${i + 1}`} type="number" min={0} max={31} value={joursParMois[i]} onChange={(e) => { const v = Math.min(31, Math.max(0, parseFloat(e.target.value) || 0)); setJoursParMois(joursParMois.map((j, k) => (k === i ? v : j))); }} className="w-full px-1 py-2 bg-slate-50 border border-slate-300 rounded-lg font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-3 text-[10px] text-slate-400 italic">Jours travaillés en année pleine : {joursAnneePleine}. Les mois grisés précèdent le démarrage : ils ne comptent pas en {anneeDemarrage} mais reviennent dans les années suivantes.</p>
+            </div>
           </div>
 
           {/* INVESTISSEMENT ET FINANCEMENT */}
@@ -502,6 +561,14 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
                   <input type="number" step="0.5" value={tauxAmortMateriel} onChange={(e) => setTauxAmortMateriel(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div className="flex flex-col gap-1">
+                  <label htmlFor="bp-croissance-ca" className="text-[10px] font-bold text-slate-500 uppercase">Croissance CA (%/an)</label>
+                  <input id="bp-croissance-ca" type="number" step="0.5" value={croissanceCAPct} onChange={(e) => setCroissanceCAPct(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="bp-croissance-charges" className="text-[10px] font-bold text-slate-500 uppercase">Hausse des charges (%/an)</label>
+                  <input id="bp-croissance-charges" type="number" step="0.5" value={croissanceChargesPct} onChange={(e) => setCroissanceChargesPct(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1">
                   <label className="text-[10px] font-bold text-slate-500 uppercase">Taux crédit (%/an)</label>
                   <input type="number" step="0.05" value={tauxInteretCredit} onChange={(e) => setTauxInteretCredit(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
@@ -537,24 +604,57 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
               </tbody>
             </table>
 
-            {/* Cascade CPC */}
-            <table className="w-full text-xs border-collapse bg-white shadow-sm">
-              <tbody>
-                <tr><td className="border p-3 font-bold text-slate-900">Chiffre d'Affaires</td><td className="border p-3 text-right font-black text-emerald-700">{formatHT(totalCAAnnee)}</td></tr>
-                <tr><td className="border p-3 pl-6 text-slate-600">− Charges Externes</td><td className="border p-3 text-right font-semibold text-rose-600">{formatHT(totalChargesExternes)}</td></tr>
-                {typeOccupation === 'location' && (
-                  <tr><td className="border p-3 pl-6 text-slate-600">− Loyer Annuel</td><td className="border p-3 text-right font-semibold text-rose-600">{formatHT(loyerAnnuel)}</td></tr>
-                )}
-                <tr><td className="border p-3 pl-6 text-slate-600">− Charges de Personnel (×12)</td><td className="border p-3 text-right font-semibold text-rose-600">{formatHT(chargesPersonnelAnnuelles)}</td></tr>
-                <tr><td className="border p-3 pl-6 text-slate-600">− Dotations aux Amortissements</td><td className="border p-3 text-right font-semibold text-rose-600">{formatHT(dotationAmortissement)}</td></tr>
-                <tr className="bg-slate-100"><td className="border p-3 font-black uppercase">Résultat d'Exploitation</td><td className={`border p-3 text-right font-black ${resultatExploitation >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatHT(resultatExploitation)}</td></tr>
-                <tr><td className="border p-3 pl-6 text-slate-600">− Charges Financières (intérêts crédit, année 1)</td><td className="border p-3 text-right font-semibold text-rose-600">{formatHT(interetsAnnee1)}</td></tr>
-                <tr className="bg-slate-100"><td className="border p-3 font-black uppercase">Résultat Avant Impôt</td><td className={`border p-3 text-right font-black ${resultatAvantImpot >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatHT(resultatAvantImpot)}</td></tr>
-                <tr><td className="border p-3 pl-6 text-slate-600">− Impôt ({regimeFiscal === 'IR' ? 'IR, barème' : 'IS 20% + CSS'})</td><td className="border p-3 text-right font-semibold text-rose-600">{formatHT(impot)}</td></tr>
-                <tr className="bg-slate-900 text-white"><td className="border p-4 font-black uppercase">Résultat Net</td><td className="border p-4 text-right font-black text-lg">{formatHT(resultatNet)}</td></tr>
-              </tbody>
-            </table>
-            <p className="mt-2 text-[10px] text-slate-400 italic print:hidden">Première année d'exploitation. Les intérêts diminuent les années suivantes (capital restant dû décroissant) — le résultat net s'améliore donc mécaniquement au fil du remboursement du crédit.</p>
+            {/* CPC prévisionnel sur 5 exercices civils */}
+            <div className="overflow-x-auto">
+              <table id="bp-cpc-5ans" className="w-full text-xs border-collapse bg-white shadow-sm min-w-[720px]">
+                <thead>
+                  <tr className="bg-slate-900 text-white">
+                    <th className="border p-3 text-left uppercase text-[10px] tracking-wider">CPC prévisionnel (DH)</th>
+                    {projection.map((l) => (
+                      <th key={l.rang} className="border p-3 text-right">
+                        <div className="font-black">{l.annee}</div>
+                        <div className="text-[9px] font-normal text-slate-300">{l.moisActifs < 12 ? `${l.moisActifs} mois` : 'année pleine'}</div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="text-slate-500"><td className="border p-3 italic">Jours travaillés</td>{projection.map((l) => <td key={l.rang} className="border p-3 text-right italic">{formatHT(l.joursTravailles)}</td>)}</tr>
+                  <tr><td className="border p-3 font-bold text-slate-900">Chiffre d'Affaires</td>{projection.map((l) => <td key={l.rang} className="border p-3 text-right font-black text-emerald-700">{formatHT(l.ca)}</td>)}</tr>
+                  <tr><td className="border p-3 pl-6 text-slate-600">− Charges Externes</td>{projection.map((l) => <td key={l.rang} className="border p-3 text-right font-semibold text-rose-600">{formatHT(l.chargesExternes)}</td>)}</tr>
+                  {typeOccupation === 'location' && (
+                    <tr><td className="border p-3 pl-6 text-slate-600">− Loyer</td>{projection.map((l) => <td key={l.rang} className="border p-3 text-right font-semibold text-rose-600">{formatHT(l.loyer)}</td>)}</tr>
+                  )}
+                  <tr><td className="border p-3 pl-6 text-slate-600">− Charges de Personnel</td>{projection.map((l) => <td key={l.rang} className="border p-3 text-right font-semibold text-rose-600">{formatHT(l.personnel)}</td>)}</tr>
+                  <tr><td className="border p-3 pl-6 text-slate-600">− Dotations aux Amortissements</td>{projection.map((l) => <td key={l.rang} className="border p-3 text-right font-semibold text-rose-600">{formatHT(l.dotations)}</td>)}</tr>
+                  <tr className="bg-slate-100"><td className="border p-3 font-black uppercase">Résultat d'Exploitation</td>{projection.map((l) => <td key={l.rang} className={`border p-3 text-right font-black ${l.resultatExploitation >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatHT(l.resultatExploitation)}</td>)}</tr>
+                  <tr><td className="border p-3 pl-6 text-slate-600">− Charges Financières (intérêts du crédit)</td>{projection.map((l) => <td key={l.rang} className="border p-3 text-right font-semibold text-rose-600">{formatHT(l.interets)}</td>)}</tr>
+                  <tr className="bg-slate-100"><td className="border p-3 font-black uppercase">Résultat Avant Impôt</td>{projection.map((l) => <td key={l.rang} className={`border p-3 text-right font-black ${l.resultatAvantImpot >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatHT(l.resultatAvantImpot)}</td>)}</tr>
+                  <tr><td className="border p-3 pl-6 text-slate-600">− Impôt ({regimeFiscal === 'IR' ? 'IR, barème' : 'IS 20% + CSS'})</td>{projection.map((l) => <td key={l.rang} className="border p-3 text-right font-semibold text-rose-600">{formatHT(l.impot)}</td>)}</tr>
+                  <tr className="bg-slate-900 text-white"><td className="border p-4 font-black uppercase">Résultat Net</td>{projection.map((l) => <td key={l.rang} className="border p-4 text-right font-black">{formatHT(l.resultatNet)}</td>)}</tr>
+                  <tr className="text-slate-500"><td className="border p-3 italic">Capital du crédit remboursé (hors CPC)</td>{projection.map((l) => <td key={l.rang} className="border p-3 text-right italic">{formatHT(l.capitalRembourse)}</td>)}</tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-6 p-4 bg-white border border-slate-200 rounded-xl" style={{ height: 300 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={donneesGraphique} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="annee" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `${Math.round(v / 1000)} k`} />
+                  <RechartsTooltip formatter={(v: number) => `${formatHT(v)} DH`} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar dataKey="Chiffre d'affaires" fill="#2563eb" isAnimationActive={false} />
+                  <Bar dataKey="Charges totales" fill="#f43f5e" isAnimationActive={false} />
+                  <Bar dataKey="Résultat net" fill="#10b981" isAnimationActive={false} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <p className="mt-2 text-[10px] text-slate-400 italic">
+              Exercices civils : l'année {projection[0].annee} court du mois de démarrage au 31 décembre (personnel, charges, loyer et amortissements au prorata des mois). Les années suivantes sont des années pleines : chiffre d'affaires +{croissanceCAPct} % et charges (externes, personnel, loyer) +{croissanceChargesPct} % par an, à partir de la valeur annualisée de l'année 1. Amortissements linéaires, intérêts issus de l'échéancier mensuel du crédit. Le report des déficits n'est pas modélisé.
+            </p>
           </div>
 
         </div>

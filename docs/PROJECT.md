@@ -17,7 +17,10 @@ principaux, réunis dans une seule app :
    des critères pondérés (prix, population, démographie, concurrence) pour identifier les
    meilleurs emplacements.
 3. **Générateur de business plan** par spécialité (aménagements, effectifs, machines, actes,
-   projection financière) à partir d'une zone choisie.
+   projection financière) à partir d'une zone choisie. Le CPC est prévisionnel sur 5 exercices
+   civils : mois de démarrage et jours travaillés par mois saisissables, chiffre d'affaires et
+   charges à +5 %/an (modifiables), échéancier de crédit mensuel, IR/IS recalculé chaque année
+   (calcul pur dans `src/utils/projectionBP.ts`, testé par `npm test`).
 
 Une administration **Directus** permet à un non-développeur de gérer le contenu (publier de
 nouveaux établissements, ajuster les zones/spécialités) et de déclencher une **extraction
@@ -50,6 +53,7 @@ src/                      Frontend React
     StatsDashboard.tsx           Onglets Démographie / Scoring / répartitions (ville, quartier, catégorie, source)
     ScoringSection.tsx           Module de scoring par zone (curseurs de pondération par spécialité)
     BusinessPlanGenerator.tsx    Générateur de business plan générique (surface, aménagements, effectifs...)
+    (calcul du CPC prévisionnel 5 ans : src/utils/projectionBP.ts + projectionBP.test.ts)
     BusinessPlan{Clinique,Dermato,Ophtalmo}.tsx   Variantes par spécialité du générateur
     ChatbotWidget.tsx            Widget de chat — réponses simulées par mots-clés, PAS d'appel IA réel
   config/
