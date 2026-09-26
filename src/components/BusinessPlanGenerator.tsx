@@ -245,6 +245,8 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
     dureeCreditAnnees,
     calculerImpot: regimeFiscal === 'IR' ? calculerIR : calculerIS,
   });
+  // Lignes de report affichées seulement quand un déficit existe (sinon résultat imposable = résultat avant impôt).
+  const avecReportDeficit = projection.some((l) => l.resultatAvantImpot < 0 || l.deficitImpute > 0);
   const donneesGraphique = projection.map((l) => ({
     annee: String(l.annee),
     "Chiffre d'affaires": Math.round(l.ca),
@@ -630,6 +632,12 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
                   <tr className="bg-slate-100"><td className="border p-3 font-black uppercase">Résultat d'Exploitation</td>{projection.map((l) => <td key={l.rang} className={`border p-3 text-right font-black ${l.resultatExploitation >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatHT(l.resultatExploitation)}</td>)}</tr>
                   <tr><td className="border p-3 pl-6 text-slate-600">− Charges Financières (intérêts du crédit)</td>{projection.map((l) => <td key={l.rang} className="border p-3 text-right font-semibold text-rose-600">{formatHT(l.interets)}</td>)}</tr>
                   <tr className="bg-slate-100"><td className="border p-3 font-black uppercase">Résultat Avant Impôt</td>{projection.map((l) => <td key={l.rang} className={`border p-3 text-right font-black ${l.resultatAvantImpot >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatHT(l.resultatAvantImpot)}</td>)}</tr>
+                  {avecReportDeficit && (
+                    <>
+                      <tr><td className="border p-3 pl-6 text-slate-600">− Déficits des années précédentes imputés</td>{projection.map((l) => <td key={l.rang} className="border p-3 text-right font-semibold text-slate-600">{formatHT(l.deficitImpute)}</td>)}</tr>
+                      <tr className="bg-slate-50"><td className="border p-3 font-bold text-slate-700">Résultat imposable</td>{projection.map((l) => <td key={l.rang} className="border p-3 text-right font-bold text-slate-700">{formatHT(l.resultatImposable)}</td>)}</tr>
+                    </>
+                  )}
                   <tr><td className="border p-3 pl-6 text-slate-600">− Impôt ({regimeFiscal === 'IR' ? 'IR, barème' : 'IS 20% + CSS'})</td>{projection.map((l) => <td key={l.rang} className="border p-3 text-right font-semibold text-rose-600">{formatHT(l.impot)}</td>)}</tr>
                   <tr className="bg-slate-900 text-white"><td className="border p-4 font-black uppercase">Résultat Net</td>{projection.map((l) => <td key={l.rang} className="border p-4 text-right font-black">{formatHT(l.resultatNet)}</td>)}</tr>
                   <tr className="text-slate-500"><td className="border p-3 italic">Capital du crédit remboursé (hors CPC)</td>{projection.map((l) => <td key={l.rang} className="border p-3 text-right italic">{formatHT(l.capitalRembourse)}</td>)}</tr>
@@ -653,7 +661,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
             </div>
 
             <p className="mt-2 text-[10px] text-slate-400 italic">
-              Exercices civils : l'année {projection[0].annee} court du mois de démarrage au 31 décembre (personnel, charges, loyer et amortissements au prorata des mois). Les années suivantes sont des années pleines : chiffre d'affaires +{croissanceCAPct} % et charges (externes, personnel, loyer) +{croissanceChargesPct} % par an, à partir de la valeur annualisée de l'année 1. Amortissements linéaires, intérêts issus de l'échéancier mensuel du crédit. Le report des déficits n'est pas modélisé.
+              Exercices civils : l'année {projection[0].annee} court du mois de démarrage au 31 décembre (personnel, charges, loyer et amortissements au prorata des mois). Les années suivantes sont des années pleines : chiffre d'affaires +{croissanceCAPct} % et charges (externes, personnel, loyer) +{croissanceChargesPct} % par an, à partir de la valeur annualisée de l'année 1. Amortissements linéaires, intérêts issus de l'échéancier mensuel du crédit. Un déficit est reporté et s'impute sur les bénéfices des années suivantes avant calcul de l'impôt (durée légale de report à confirmer avec un expert-comptable).
             </p>
           </div>
 

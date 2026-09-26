@@ -19,7 +19,7 @@ principaux, réunis dans une seule app :
 3. **Générateur de business plan** par spécialité (aménagements, effectifs, machines, actes,
    projection financière) à partir d'une zone choisie. Le CPC est prévisionnel sur 5 exercices
    civils : mois de démarrage et jours travaillés par mois saisissables, chiffre d'affaires et
-   charges à +5 %/an (modifiables), échéancier de crédit mensuel, IR/IS recalculé chaque année
+   charges à +5 %/an (modifiables), échéancier de crédit mensuel, IR/IS recalculé chaque année avec report des déficits
    (calcul pur dans `src/utils/projectionBP.ts`, testé par `npm test`).
 
 Une administration **Directus** permet à un non-développeur de gérer le contenu (publier de

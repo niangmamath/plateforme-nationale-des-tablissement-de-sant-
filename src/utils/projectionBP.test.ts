@@ -93,6 +93,53 @@ describe('projeter — années suivantes', () => {
   });
 });
 
+describe('projeter — report des déficits', () => {
+  const impotFlat = (r: number) => Math.max(0, r) * 0.2;
+  // Démarrage en décembre avec un seul jour travaillé : l'année 1 est déficitaire, l'année 2 bénéficiaire.
+  const joursDeficitAn1 = [...new Array(11).fill(25), 1];
+
+  it("un déficit est imputé sur le bénéfice suivant avant le calcul de l'impôt", () => {
+    const [a1, a2] = projeter({ ...base, moisDemarrage: 12, joursParMois: joursDeficitAn1, calculerImpot: impotFlat });
+    expect(a1.resultatAvantImpot).toBeLessThan(0);
+    expect(a1.impot).toBe(0);
+    expect(a1.deficitImpute).toBe(0);
+    expect(a2.resultatAvantImpot).toBeGreaterThan(-a1.resultatAvantImpot);
+    expect(a2.deficitImpute).toBeCloseTo(-a1.resultatAvantImpot, 6);
+    expect(a2.resultatImposable).toBeCloseTo(a2.resultatAvantImpot + a1.resultatAvantImpot, 6);
+    expect(a2.impot).toBeCloseTo(0.2 * (a2.resultatAvantImpot + a1.resultatAvantImpot), 6);
+  });
+
+  it("sans déficit, l'impôt est calculé sur tout le bénéfice", () => {
+    const lignes = projeter({ ...base, calculerImpot: impotFlat });
+    for (const l of lignes) {
+      expect(l.deficitImpute).toBe(0);
+      expect(l.resultatImposable).toBeCloseTo(l.resultatAvantImpot, 6);
+    }
+  });
+
+  it('un déficit plus grand que le bénéfice suivant se répartit sur plusieurs années', () => {
+    const lignes = projeter({ ...base, moisDemarrage: 12, joursParMois: joursDeficitAn1, masseSalarialeMensuelle: 19500, chargesExternesAnnuelles: 0, calculerImpot: impotFlat });
+    const [a1, a2, a3] = lignes;
+    expect(a1.resultatAvantImpot).toBeLessThan(0);
+    expect(a2.resultatAvantImpot).toBeGreaterThan(0);
+    expect(a2.resultatAvantImpot).toBeLessThan(-a1.resultatAvantImpot); // bénéfice plus petit que le déficit
+    expect(a2.deficitImpute).toBeCloseTo(a2.resultatAvantImpot, 6); // tout le bénéfice est absorbé
+    expect(a2.impot).toBe(0);
+    expect(a3.deficitImpute).toBeGreaterThan(0); // le reste continue à être imputé
+    const totalImpute = lignes.reduce((acc, l) => acc + l.deficitImpute, 0);
+    expect(totalImpute).toBeLessThanOrEqual(-a1.resultatAvantImpot + 1e-6);
+  });
+
+  it("un déficit ne produit jamais d'impôt négatif ni de résultat imposable négatif", () => {
+    const lignes = projeter({ ...base, caParJour: 100, calculerImpot: impotFlat });
+    for (const l of lignes) {
+      expect(l.resultatAvantImpot).toBeLessThan(0);
+      expect(l.resultatImposable).toBe(0);
+      expect(l.impot).toBe(0);
+    }
+  });
+});
+
 describe('echeancierCredit', () => {
   it('rembourse exactement le capital sur la durée (démarrage en janvier)', () => {
     const { capital, interets } = echeancierCredit(500000, 4.65, 4, 1, 5);

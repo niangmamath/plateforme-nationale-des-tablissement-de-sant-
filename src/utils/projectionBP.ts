@@ -8,7 +8,10 @@
 // - Les dotations aux amortissements sont linéaires et fixes (plafonnées à la valeur à amortir).
 // - Les intérêts viennent d'un échéancier mensuel à annuités constantes, qui démarre au mois de
 //   démarrage : ils diminuent d'année en année.
-// - Le report des déficits n'est pas modélisé : un résultat négatif ne réduit pas l'impôt suivant.
+// - Un résultat avant impôt négatif est reporté et s'impute sur les bénéfices des années suivantes
+//   (dans l'ordre), avant calcul de l'impôt. Le report légal étant limité à quelques exercices (4 selon
+//   le CGI, à confirmer avec un comptable), cela ne joue pas ici : sur 5 ans, un déficit de l'année 1
+//   reste imputable jusqu'à l'année 5.
 
 export const NB_ANNEES = 5;
 export const JOURS_PAR_MOIS_DEFAUT = 25; // 25 j/mois × 12 = 300 j/an, l'ancienne base du générateur
@@ -47,6 +50,8 @@ export interface LigneAnnee {
   interets: number;
   capitalRembourse: number;
   resultatAvantImpot: number;
+  deficitImpute: number; // déficits des années précédentes imputés sur le bénéfice de l'année
+  resultatImposable: number; // bénéfice après imputation (0 si déficit)
   impot: number;
   resultatNet: number;
 }
@@ -93,6 +98,7 @@ export function projeter(p: ParamsProjection): LigneAnnee[] {
   // Restant à amortir par catégorie, pour ne jamais dépasser la valeur d'origine.
   let restantAmenagements = p.baseAmortAmenagements;
   let restantMateriel = p.baseAmortMateriel;
+  let deficitsReportables = 0;
 
   return Array.from({ length: NB_ANNEES }, (_, i) => {
     const rang = i + 1;
@@ -117,7 +123,16 @@ export function projeter(p: ParamsProjection): LigneAnnee[] {
 
     const resultatExploitation = ca - chargesExternes - loyer - personnel - dotations;
     const resultatAvantImpot = resultatExploitation - interets[i];
-    const impot = p.calculerImpot(resultatAvantImpot);
+    // Déficit : reporté (impôt nul). Bénéfice : on impute d'abord les déficits reportés.
+    let deficitImpute = 0;
+    if (resultatAvantImpot < 0) {
+      deficitsReportables += -resultatAvantImpot;
+    } else {
+      deficitImpute = Math.min(resultatAvantImpot, deficitsReportables);
+      deficitsReportables -= deficitImpute;
+    }
+    const resultatImposable = Math.max(0, resultatAvantImpot - deficitImpute);
+    const impot = p.calculerImpot(resultatImposable);
 
     return {
       rang,
@@ -133,6 +148,8 @@ export function projeter(p: ParamsProjection): LigneAnnee[] {
       interets: interets[i],
       capitalRembourse: capital[i],
       resultatAvantImpot,
+      deficitImpute,
+      resultatImposable,
       impot,
       resultatNet: resultatAvantImpot - impot,
     };
