@@ -13,6 +13,8 @@ interface BusinessPlanGeneratorProps {
 
 const formatDH = (num: number) => num.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' DH';
 const formatHT = (num: number) => num.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+const TVA_MATERIEL = 0.20;
+const arrondi2 = (n: number) => Math.round(n * 100) / 100;
 const NOMS_MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
 export default function BusinessPlanGenerator({ isOpen, onClose, area, config }: BusinessPlanGeneratorProps) {
@@ -31,6 +33,9 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
   const [newEffectifSalaire, setNewEffectifSalaire] = useState('');
 
   const [machines, setMachines] = useState<any[]>([]);
+  // Les prix des machines sont toujours stockés HT (tout le calcul en aval part du HT) ; ce choix ne
+  // change que la saisie et l'affichage : en TTC, on affiche HT × (1 + TVA) et on convertit à la saisie.
+  const [equipementTTC, setEquipementTTC] = useState<boolean>(false);
   const [newMachineNom, setNewMachineNom] = useState('');
   const [newMachinePrix, setNewMachinePrix] = useState('');
 
@@ -135,7 +140,8 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
   const handleRemoveMachine = (id: number) => setMachines(machines.filter(m => m.id !== id));
   const handleAddMachine = () => {
     if (newMachineNom && newMachinePrix) {
-      setMachines([...machines, { id: Date.now(), nom: newMachineNom.toUpperCase(), prix: parseFloat(newMachinePrix) }]);
+      const saisi = parseFloat(newMachinePrix);
+      setMachines([...machines, { id: Date.now(), nom: newMachineNom.toUpperCase(), prix: equipementTTC ? saisi / (1 + TVA_MATERIEL) : saisi }]);
       setNewMachineNom(''); setNewMachinePrix('');
     }
   };
@@ -172,7 +178,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
   const masseSalariale = effectifs.reduce((acc, curr) => acc + (curr.qte * curr.salaire), 0);
 
   const totalMaterielHT = machines.reduce((acc, curr) => acc + curr.prix, 0);
-  const tvaMateriel = totalMaterielHT * 0.20;
+  const tvaMateriel = totalMaterielHT * TVA_MATERIEL;
   const totalMaterielTTC = totalMaterielHT + tvaMateriel;
 
   // prixM2/loyerM2Etat : états éditables (voir plus haut), initialisés depuis area mais
@@ -392,22 +398,24 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
 
           {/* MATÉRIEL MÉDICAL MODIFIABLE */}
           <div className="mb-12 page-break-inside-avoid">
-            <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">III. Équipement & Spécialités<span className="text-[10px] font-normal text-slate-500 uppercase print:hidden">Édition activée</span></h3>
+            <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">III. Équipement & Spécialités<span className="flex items-center gap-3 print:hidden"><span className="text-[10px] font-normal text-slate-500 uppercase">Prix saisis</span><span className="inline-flex rounded-lg border border-slate-300 overflow-hidden text-[11px] font-black"><button type="button" id="bp-equip-ht" aria-pressed={!equipementTTC} onClick={() => setEquipementTTC(false)} className={`px-3 py-1.5 ${!equipementTTC ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Hors taxe</button><button type="button" id="bp-equip-ttc" aria-pressed={equipementTTC} onClick={() => setEquipementTTC(true)} className={`px-3 py-1.5 ${equipementTTC ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>TTC (TVA 20 %)</button></span></span></h3>
             <table className="w-full text-xs border-collapse border border-slate-300 bg-white">
-              <thead><tr className="bg-slate-100"><th className="border p-3 text-left">Équipement</th><th className="border p-3 text-right w-40">Montant (DH)</th><th className="border p-3 w-12 print:hidden">X</th></tr></thead>
+              <thead><tr className="bg-slate-100"><th className="border p-3 text-left">Équipement</th><th className="border p-3 text-right w-40">{equipementTTC ? 'Montant TTC (DH)' : 'Montant HT (DH)'}</th><th className="border p-3 w-12 print:hidden">X</th></tr></thead>
               <tbody>
                 {machines.map(m => (
                   <tr key={m.id} className="hover:bg-slate-50">
                     <td className="border p-2"><input type="text" value={m.nom} onChange={(e) => handleUpdateMachine(m.id, 'nom', e.target.value)} className="w-full bg-transparent font-medium text-slate-800 outline-none print:border-none" /></td>
-                    <td className="border p-2"><input type="number" value={m.prix} onChange={(e) => handleUpdateMachine(m.id, 'prix', parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-right font-bold outline-none print:border-none appearance-none" /></td>
+                    <td className="border p-2"><input type="number" value={arrondi2(equipementTTC ? m.prix * (1 + TVA_MATERIEL) : m.prix)} onChange={(e) => { const saisi = parseFloat(e.target.value) || 0; handleUpdateMachine(m.id, 'prix', equipementTTC ? saisi / (1 + TVA_MATERIEL) : saisi); }} className="w-full bg-transparent text-right font-bold outline-none print:border-none appearance-none" /></td>
                     <td className="border p-2 text-center print:hidden"><button onClick={() => handleRemoveMachine(m.id)} className="text-rose-500"><Trash2 className="h-4 w-4 mx-auto" /></button></td>
                   </tr>
                 ))}
                 <tr className="print:hidden bg-blue-50/30">
                   <td className="border p-2"><input type="text" placeholder="Ajouter une machine..." value={newMachineNom} onChange={(e) => setNewMachineNom(e.target.value)} className="w-full border p-2 text-xs rounded" /></td>
-                  <td className="border p-2"><input type="number" placeholder="Prix HT" value={newMachinePrix} onChange={(e) => setNewMachinePrix(e.target.value)} className="w-full border p-2 text-xs text-right rounded" /></td>
+                  <td className="border p-2"><input type="number" placeholder={equipementTTC ? 'Prix TTC' : 'Prix HT'} value={newMachinePrix} onChange={(e) => setNewMachinePrix(e.target.value)} className="w-full border p-2 text-xs text-right rounded" /></td>
                   <td className="border p-2 text-center"><button onClick={handleAddMachine} className="bg-blue-600 text-white p-2 rounded w-full"><Plus className="h-4 w-4 mx-auto" /></button></td>
                 </tr>
+                <tr className="bg-slate-100"><td className="border p-3 text-right font-bold text-slate-700">Total HT :</td><td className="border p-3 text-right font-bold text-slate-700" colSpan={2}>{formatHT(totalMaterielHT)}</td></tr>
+                <tr className="bg-slate-100"><td className="border p-3 text-right font-bold text-slate-700">TVA (20 %) :</td><td className="border p-3 text-right font-bold text-slate-700" colSpan={2}>{formatHT(tvaMateriel)}</td></tr>
                 <tr className="bg-slate-900 text-white"><td className="border p-3 text-right font-black">PT TTC (TVA 20%) :</td><td className="border p-3 text-right font-black text-lg" colSpan={2}>{formatHT(totalMaterielTTC)}</td></tr>
               </tbody>
             </table>
