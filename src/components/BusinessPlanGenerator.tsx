@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal, flushSync } from 'react-dom';
 import { X, FileText, Calculator, CalendarDays, Landmark, Download, Plus, Trash2, Printer, Image as ImageIcon } from 'lucide-react';
 import { motion } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -11,8 +12,11 @@ interface BusinessPlanGeneratorProps {
   config: any | null; // Reçoit la configuration (ex: DERMATO_CONFIG)
 }
 
-const formatDH = (num: number) => num.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' DH';
-const formatHT = (num: number) => num.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+// L'espace fine insécable (U+202F) que produit fr-FR est absente de la police du site : les milliers
+// disparaissaient ("5325000"). On la remplace par l'espace insécable ordinaire (U+00A0).
+const espacer = (texte: string) => texte.replace(/\u202f/g, '\u00a0');
+const formatDH = (num: number) => espacer(num.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) + ' DH';
+const formatHT = (num: number) => espacer(num.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }));
 const TVA_MATERIEL = 0.20;
 const TITRE_DEFAUT = 'Étude de Faisabilité et Business Plan';
 const TYPES_LOGO = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
@@ -134,6 +138,19 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
     document.title = titreAffiche;
     return () => { document.title = ancienTitre; };
   }, [isOpen, titreAffiche]);
+
+  // Le graphique (Recharts) mesure sa largeur à l'écran et ne se redimensionne pas de lui-même à
+  // l'impression : il sortait coupé dans le PDF. Le temps de l'impression, on le rend à largeur fixe
+  // (mise à l'échelle par le CSS d'impression) ; flushSync garantit que ce rendu est fait avant la mise
+  // en page d'impression, que le PDF vienne du bouton ou de Ctrl+P.
+  const [enImpression, setEnImpression] = useState(false);
+  useEffect(() => {
+    const avant = () => flushSync(() => setEnImpression(true));
+    const apres = () => setEnImpression(false);
+    window.addEventListener('beforeprint', avant);
+    window.addEventListener('afterprint', apres);
+    return () => { window.removeEventListener('beforeprint', avant); window.removeEventListener('afterprint', apres); };
+  }, []);
 
   const handleChoisirLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const fichier = e.target.files?.[0];
@@ -285,6 +302,16 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
   });
   // Lignes de report affichées seulement quand un déficit existe (sinon résultat imposable = résultat avant impôt).
   const avecReportDeficit = projection.some((l) => l.resultatAvantImpot < 0 || l.deficitImpute > 0);
+  const enfantsGraphique = [
+    <CartesianGrid key="grille" strokeDasharray="3 3" vertical={false} />,
+    <XAxis key="x" dataKey="annee" tick={{ fontSize: 11 }} />,
+    <YAxis key="y" tick={{ fontSize: 11 }} tickFormatter={(v: number) => `${Math.round(v / 1000)} k`} />,
+    <RechartsTooltip key="info" formatter={(v: number) => `${formatHT(v)} DH`} />,
+    <Legend key="legende" wrapperStyle={{ fontSize: 11 }} />,
+    <Bar key="ca" dataKey="Chiffre d'affaires" fill="#2563eb" isAnimationActive={false} />,
+    <Bar key="charges" dataKey="Charges totales" fill="#f43f5e" isAnimationActive={false} />,
+    <Bar key="net" dataKey="Résultat net" fill="#10b981" isAnimationActive={false} />,
+  ];
   const donneesGraphique = projection.map((l) => ({
     annee: String(l.annee),
     "Chiffre d'affaires": Math.round(l.ca),
@@ -292,8 +319,8 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
     'Résultat net': Math.round(l.resultatNet),
   }));
 
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 print:p-0 print:static">
+  return createPortal(
+    <div id="bp-print-root" className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 print:p-0 print:static">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm print:hidden" />
       <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-6xl bg-white text-slate-900 rounded-3xl shadow-2xl flex flex-col overflow-hidden h-[95vh] print:h-auto print:shadow-none print:rounded-none">
         
@@ -715,19 +742,14 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
               </table>
             </div>
 
-            <div className="mt-6 p-4 bg-white border border-slate-200 rounded-xl" style={{ height: 300 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={donneesGraphique} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="annee" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `${Math.round(v / 1000)} k`} />
-                  <RechartsTooltip formatter={(v: number) => `${formatHT(v)} DH`} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="Chiffre d'affaires" fill="#2563eb" isAnimationActive={false} />
-                  <Bar dataKey="Charges totales" fill="#f43f5e" isAnimationActive={false} />
-                  <Bar dataKey="Résultat net" fill="#10b981" isAnimationActive={false} />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="mt-6 p-4 bg-white border border-slate-200 rounded-xl page-break-inside-avoid" style={{ height: 300 }}>
+              {enImpression ? (
+                <BarChart width={680} height={270} data={donneesGraphique} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>{enfantsGraphique}</BarChart>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={donneesGraphique} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>{enfantsGraphique}</BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
 
             <p className="mt-2 text-[10px] text-slate-400 italic">
@@ -737,7 +759,25 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
 
         </div>
       </motion.div>
-      <style dangerouslySetInnerHTML={{__html: `@media print { body * { visibility: hidden; } .fixed { position: absolute; } .print\\:static { position: static !important; } .print\\:hidden { display: none !important; } .print\\:p-0 { padding: 0 !important; } .print\\:shadow-none { box-shadow: none !important; } .print\\:border-none { border: none !important; } .page-break-inside-avoid { page-break-inside: avoid; } .relative.w-full.max-w-6xl, .relative.w-full.max-w-6xl * { visibility: visible; } .relative.w-full.max-w-6xl { position: absolute; left: 0; top: 0; width: 100%; overflow: visible !important; height: auto !important; } }`}} />
-    </div>
+      {/* Impression / PDF. Le document est rendu sous <body> (portail) : on masque tout le reste de
+          l'application (display: none, pas seulement visibility, sinon ses pages restent en flux et
+          sortent en blanc), on rend les fonds sombres (lignes de total à texte blanc) et on libère la
+          hauteur pour que le contenu se répartisse sur autant de pages que nécessaire. */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @media print {
+          html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
+          body > *:not(#bp-print-root) { display: none !important; }
+          #bp-print-root, #bp-print-root * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          #bp-print-root { position: static !important; display: block !important; padding: 0 !important; }
+          #bp-print-root > div:last-child { position: static !important; width: 100% !important; max-width: none !important; height: auto !important; overflow: visible !important; transform: none !important; box-shadow: none !important; border-radius: 0 !important; }
+          #bp-print-root .overflow-y-auto, #bp-print-root .overflow-x-auto { overflow: visible !important; height: auto !important; max-height: none !important; }
+          #bp-print-root #bp-cpc-5ans { min-width: 0 !important; }
+          #bp-print-root .recharts-wrapper, #bp-print-root .recharts-surface { max-width: 100% !important; height: auto !important; }
+          #bp-print-root .print\\:hidden { display: none !important; }
+          #bp-print-root .page-break-inside-avoid { page-break-inside: avoid; break-inside: avoid; }
+        }
+      `}} />
+    </div>,
+    document.body
   );
 }
