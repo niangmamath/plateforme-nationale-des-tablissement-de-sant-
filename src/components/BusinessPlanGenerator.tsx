@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, FileText, Calculator, Landmark, Download, Plus, Trash2, Printer } from 'lucide-react';
+import { X, FileText, Calculator, CalendarDays, Landmark, Download, Plus, Trash2, Printer } from 'lucide-react';
 import { motion } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { JOURS_PAR_MOIS_DEFAUT, projeter } from '../utils/projectionBP';
@@ -304,6 +304,39 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
             </div>
           </div>
 
+          {/* CALENDRIER D'EXPLOITATION (mois de démarrage, jours travaillés) */}
+            <div className="mb-10 p-5 bg-white rounded-2xl border border-slate-200 shadow-sm print:hidden" id="bp-calendrier">
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-4 flex items-center gap-2"><CalendarDays className="h-5 w-5 text-blue-600" /> Calendrier d'exploitation</h3>
+              <div className="flex flex-wrap items-end gap-6 mb-4">
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="bp-mois-demarrage" className="text-[10px] font-bold text-slate-500 uppercase">Mois de démarrage</label>
+                  <select id="bp-mois-demarrage" value={moisDemarrage} onChange={(e) => setMoisDemarrage(Number(e.target.value))} className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    {NOMS_MOIS.map((nom, i) => <option key={nom} value={i + 1}>{nom}</option>)}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="bp-annee-demarrage" className="text-[10px] font-bold text-slate-500 uppercase">Année de démarrage</label>
+                  <input id="bp-annee-demarrage" type="number" value={anneeDemarrage} onChange={(e) => setAnneeDemarrage(Math.round(Number(e.target.value)) || new Date().getFullYear())} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="bp-jours-tous" className="text-[10px] font-bold text-slate-500 uppercase">Jours travaillés / mois (tous les mois)</label>
+                  <input id="bp-jours-tous" type="number" min={0} max={31} placeholder="ex. 22" onChange={(e) => { const v = Math.min(31, Math.max(0, parseFloat(e.target.value))); if (!Number.isNaN(v)) setJoursParMois(new Array(12).fill(v)); }} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-2">
+                {NOMS_MOIS.map((nom, i) => {
+                  const avantDemarrage = i + 1 < moisDemarrage;
+                  return (
+                    <div key={nom} className={`flex flex-col gap-1 ${avantDemarrage ? 'opacity-50' : ''}`} title={avantDemarrage ? "Avant le démarrage : ne compte qu'à partir de l'année suivante" : undefined}>
+                      <label htmlFor={`bp-jours-${i + 1}`} className="text-[10px] font-bold text-slate-500 uppercase text-center">{nom.slice(0, 4)}.</label>
+                      <input id={`bp-jours-${i + 1}`} type="number" min={0} max={31} value={joursParMois[i]} onChange={(e) => { const v = Math.min(31, Math.max(0, parseFloat(e.target.value) || 0)); setJoursParMois(joursParMois.map((j, k) => (k === i ? v : j))); }} className="w-full px-1 py-2 bg-slate-50 border border-slate-300 rounded-lg font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-3 text-[10px] text-slate-400 italic">Jours travaillés en année pleine : {joursAnneePleine}. Les mois grisés précèdent le démarrage : ils ne comptent pas en {anneeDemarrage} mais reviennent dans les années suivantes.</p>
+            </div>
+
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10 mb-10">
             {/* AMÉNAGEMENTS */}
             <div>
@@ -406,39 +439,6 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
                 <tr className="bg-slate-900 text-white"><td className="border p-4 font-black text-right" colSpan={3}>CA ANNUEL (année pleine, {joursAnneePleine} jours) :</td><td className="border p-4 font-black text-right text-xl" colSpan={2}>{formatHT(totalCAAnnee)} DH</td></tr>
               </tbody>
             </table>
-
-            {/* Calendrier d'exploitation */}
-            <div className="mt-4 p-4 bg-white border border-slate-200 rounded-xl print:hidden" id="bp-calendrier">
-              <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-3">Calendrier d'exploitation</h4>
-              <div className="flex flex-wrap items-end gap-6 mb-4">
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="bp-mois-demarrage" className="text-[10px] font-bold text-slate-500 uppercase">Mois de démarrage</label>
-                  <select id="bp-mois-demarrage" value={moisDemarrage} onChange={(e) => setMoisDemarrage(Number(e.target.value))} className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    {NOMS_MOIS.map((nom, i) => <option key={nom} value={i + 1}>{nom}</option>)}
-                  </select>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="bp-annee-demarrage" className="text-[10px] font-bold text-slate-500 uppercase">Année de démarrage</label>
-                  <input id="bp-annee-demarrage" type="number" value={anneeDemarrage} onChange={(e) => setAnneeDemarrage(Math.round(Number(e.target.value)) || new Date().getFullYear())} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="bp-jours-tous" className="text-[10px] font-bold text-slate-500 uppercase">Jours travaillés / mois (tous les mois)</label>
-                  <input id="bp-jours-tous" type="number" min={0} max={31} placeholder="ex. 22" onChange={(e) => { const v = Math.min(31, Math.max(0, parseFloat(e.target.value))); if (!Number.isNaN(v)) setJoursParMois(new Array(12).fill(v)); }} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-2">
-                {NOMS_MOIS.map((nom, i) => {
-                  const avantDemarrage = i + 1 < moisDemarrage;
-                  return (
-                    <div key={nom} className={`flex flex-col gap-1 ${avantDemarrage ? 'opacity-50' : ''}`} title={avantDemarrage ? "Avant le démarrage : ne compte qu'à partir de l'année suivante" : undefined}>
-                      <label htmlFor={`bp-jours-${i + 1}`} className="text-[10px] font-bold text-slate-500 uppercase text-center">{nom.slice(0, 4)}.</label>
-                      <input id={`bp-jours-${i + 1}`} type="number" min={0} max={31} value={joursParMois[i]} onChange={(e) => { const v = Math.min(31, Math.max(0, parseFloat(e.target.value) || 0)); setJoursParMois(joursParMois.map((j, k) => (k === i ? v : j))); }} className="w-full px-1 py-2 bg-slate-50 border border-slate-300 rounded-lg font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="mt-3 text-[10px] text-slate-400 italic">Jours travaillés en année pleine : {joursAnneePleine}. Les mois grisés précèdent le démarrage : ils ne comptent pas en {anneeDemarrage} mais reviennent dans les années suivantes.</p>
-            </div>
           </div>
 
           {/* INVESTISSEMENT ET FINANCEMENT */}
