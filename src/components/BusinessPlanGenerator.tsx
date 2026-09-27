@@ -730,6 +730,17 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
               </p>
             </div>
 
+            {/* Résumé imprimé des hypothèses ci-dessus : le panneau de saisie est print:hidden comme
+                tous les formulaires du document, donc sans ce résumé, le PDF montrait un CPC sur 5
+                ans sans jamais dire à quel régime fiscal, quels taux d'amortissement ni quel taux de
+                crédit il correspondait. */}
+            <p className="hidden print:block mb-6 text-xs text-slate-600 leading-relaxed">
+              <strong className="text-slate-800">Hypothèses retenues pour le CPC :</strong> régime {regimeFiscal === 'IR' ? 'IR — barème progressif' : 'IS — 20 %'} ;
+              {' '}amortissement aménagements {tauxAmortAmenagements} %/an, matériel {tauxAmortMateriel} %/an ;
+              {' '}chiffre d'affaires +{croissanceCAPct} %/an, charges +{croissanceChargesPct} %/an ;
+              {' '}crédit à {tauxInteretCredit} %/an sur {dureeCreditAnnees} ans.
+            </p>
+
             {/* Charges externes */}
             <table className="w-full text-xs border-collapse border border-slate-300 bg-white mb-6">
               <thead><tr className="bg-slate-100"><th className="border border-slate-300 p-2 text-left">Charges Externes (fournitures, électricité, assurance, comptabilité...)</th><th className="border border-slate-300 p-2 text-right w-24">Montant/an (DH)</th><th className="border border-slate-300 p-2 w-8 print:hidden"></th></tr></thead>
