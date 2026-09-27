@@ -184,10 +184,12 @@ export default function App() {
 
   // Section de l'accueil visée par un lien du menu (ex. "/#scoring-section") : on y défile une fois
   // ses données chargées, plutôt que de compter sur le défilement natif du navigateur qui, lui, ne
-  // sait pas attendre qu'une section arrivée par fetch existe déjà dans le DOM.
+  // sait pas attendre qu'une section arrivée par fetch existe déjà dans le DOM. Sans ancre (lien
+  // "Annuaire & carte", qui garde une URL "/" propre, sans #), on remonte simplement en haut.
   useEffect(() => {
-    if (route !== '/' || isLoading || !ancre) return;
-    document.getElementById(ancre)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (route !== '/' || isLoading) return;
+    if (ancre) document.getElementById(ancre)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [route, ancre, isLoading]);
 
   if (loadError) {

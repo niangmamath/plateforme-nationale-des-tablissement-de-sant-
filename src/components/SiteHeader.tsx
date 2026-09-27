@@ -14,8 +14,8 @@ interface LienNav {
 
 const LIENS: LienNav[] = [
   { cible: '/', label: 'Annuaire & carte', icone: Map },
-  { cible: '/#analytics-section', label: 'Statistiques', icone: BarChart3 },
-  { cible: '/#scoring-section', label: 'Scoring', icone: Target },
+  { cible: '/#analytics-section', label: 'Analytique & Intelligence Géospatiale', icone: BarChart3 },
+  { cible: '/#scoring-section', label: 'Où ouvrir', icone: Target },
   { cible: '/simulateur-credit', label: 'Simulateur de crédit', icone: Landmark },
 ];
 
@@ -30,8 +30,9 @@ interface SiteHeaderProps {
   naviguer: (cible: string) => void;
 }
 
-// En-tête partagé par toutes les pages/sections — même logo, même navigation. "Statistiques" et
-// "Scoring" pointent vers une ancre de la page d'accueil (pas une page à part) : le clic navigue
+// En-tête partagé par toutes les pages/sections — même logo, même navigation. "Analytique &
+// Intelligence Géospatiale" et "Où ouvrir" pointent vers une ancre de la page d'accueil (pas une
+// page à part) : le clic navigue
 // vers l'accueil si besoin, puis défile jusqu'à la section une fois ses données chargées (effet
 // dans App.tsx) ; si on y est déjà, ça défile directement, sans re-déclencher de chargement.
 export default function SiteHeader({ route, ancre, naviguer }: SiteHeaderProps) {
