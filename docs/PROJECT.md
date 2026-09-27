@@ -60,6 +60,9 @@ src/                      Frontend React
     SiteHeader.tsx                En-tête + navigation (accueil, sections ancrées, simulateur de crédit), vraies URL via hooks/useRoute.ts
                                   (History API, pas de dépendance de routage) — repli SPA sur index.html configuré dans vercel.json
                                   pour toute route hors /api/..., et par défaut côté serveur Vite en développement
+    SEO : titre, description et URL canonique mis à jour par route (utils/seo.ts, appliqué dans App.tsx) — Googlebot exécute le JS et
+         indexe donc /simulateur-credit correctement, mais les aperçus de partage social (Facebook, LinkedIn, WhatsApp) restent ceux
+         de index.html pour toutes les routes, ces robots-là ne lisant jamais le JavaScript. public/sitemap.xml liste les 2 URL réelles.
     BusinessPlan{Clinique,Dermato,Ophtalmo}.tsx   Variantes par spécialité du générateur
     ChatbotWidget.tsx            Widget de chat — réponses simulées par mots-clés, PAS d'appel IA réel
   config/

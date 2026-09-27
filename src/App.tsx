@@ -6,6 +6,7 @@ import ScoringSection from './components/ScoringSection';
 import SimulateurCredit from './components/SimulateurCredit';
 import SiteHeader from './components/SiteHeader';
 import { useRoute } from './hooks/useRoute';
+import { appliquerMeta } from './utils/seo';
 import ChatbotWidget from './components/ChatbotWidget';
 import ScrollToggleButton from './components/ScrollToggleButton';
 import SignalementHost, { signalerAbsence, signalerCorrection } from './components/SignalementHost';
@@ -25,6 +26,12 @@ export default function App() {
   // en bas (après tous les hooks ci-dessous, jamais avant : un retour anticipé ici sauterait des
   // hooks selon la page, ce qui casserait React à la prochaine navigation).
   const { route, ancre, naviguer } = useRoute();
+
+  // Titre d'onglet et URL canonique propres à chaque route — voir utils/seo.ts pour ce que ça
+  // couvre (l'indexation Google) et ce que ça ne couvre pas (les aperçus de partage social).
+  useEffect(() => {
+    appliquerMeta(route);
+  }, [route]);
 
   // Données chargées depuis l'API (Postgres)
   const [countries, setCountries] = useState<PaysGeo[]>([]);
