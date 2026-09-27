@@ -54,6 +54,7 @@ src/                      Frontend React
     ScoringSection.tsx           Module de scoring par zone (curseurs de pondération par spécialité)
     BusinessPlanGenerator.tsx    Générateur de business plan générique (surface, aménagements, effectifs...)
     (calcul du CPC prévisionnel 5 ans : src/utils/projectionBP.ts + projectionBP.test.ts)
+    (introduction en texte de la zone, comparée aux autres zones/villes : src/utils/introductionZone.ts + son test)
     SimulateurCredit.tsx         Simulateur de crédit autonome (mensualité, tableau d'amortissement mois par mois) — indépendant
                                   du business plan, qui réutilise le même composant TableauAmortissementCredit.tsx en lecture seule
     SiteHeader.tsx                En-tête + navigation (accueil, sections ancrées, simulateur de crédit), vraies URL via hooks/useRoute.ts

@@ -4,6 +4,7 @@ import { X, FileText, Calculator, CalendarDays, Landmark, Download, Plus, Trash2
 import { motion } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { JOURS_PAR_MOIS_DEFAUT, projeter } from '../utils/projectionBP';
+import { genererIntroduction, type ZoneComparable, type VilleComparable } from '../utils/introductionZone';
 import TableauAmortissementCredit from './TableauAmortissementCredit';
 
 interface BusinessPlanGeneratorProps {
@@ -11,6 +12,9 @@ interface BusinessPlanGeneratorProps {
   onClose: () => void;
   area: any | null;
   config: any | null; // Reçoit la configuration (ex: DERMATO_CONFIG)
+  ville?: string;
+  zonesVille?: ZoneComparable[]; // toutes les zones de `ville` (pas seulement le top 10 pondéré)
+  villesComparables?: VilleComparable[]; // concurrence de la spécialité, agrégée par ville du pays
 }
 
 // L'espace fine insécable (U+202F) que produit fr-FR est absente de la police du site : les milliers
@@ -25,7 +29,7 @@ const TAILLE_MAX_LOGO = 2 * 1024 * 1024; // 2 Mo
 const arrondi2 = (n: number) => Math.round(n * 100) / 100;
 const NOMS_MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
-export default function BusinessPlanGenerator({ isOpen, onClose, area, config }: BusinessPlanGeneratorProps) {
+export default function BusinessPlanGenerator({ isOpen, onClose, area, config, ville, zonesVille, villesComparables }: BusinessPlanGeneratorProps) {
   // --- ÉTATS DYNAMIQUES PRINCIPAUX ---
   const [surface, setSurface] = useState<number>(0);
   const [typeOccupation, setTypeOccupation] = useState<'achat' | 'location'>('achat');
@@ -166,6 +170,31 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
   };
 
   if (!isOpen || !area || !config) return null;
+
+  // Introduction en texte : profil de la zone puis comparaison, à partir des données que
+  // ScoringSection fournit (ville, zonesVille, villesComparables). Ces props sont optionnelles :
+  // si elles manquent, aucune introduction ne s'affiche plutôt que d'inventer une comparaison.
+  const paragraphesIntroduction =
+    ville && zonesVille && villesComparables
+      ? genererIntroduction({
+          zone: {
+            nom: area.nom,
+            population: area.population,
+            densite: area.densite ?? area.densiteVal ?? 0,
+            prixM2: area.prixM2,
+            loyerM2: area.loyerM2,
+            pop0_14: area.pop0_14 ?? null,
+            pop15_59: area.pop15_59 ?? area.pop1559 ?? null,
+            pop60_plus: area.pop60_plus ?? area.pop60plus ?? null,
+            concurrenceCount: area.concurrenceCount ?? 0,
+            autresSpecCount: area.autresSpecCount ?? 0,
+          },
+          ville,
+          zonesVille,
+          villes: villesComparables,
+          specialiteNom: config.nom,
+        })
+      : [];
 
   // --- LOGIQUE D'AJOUT ET MODIFICATION ---
   const handleUpdateAmenagement = (id: number, field: 'nom' | 'prix', value: string | number) => setAmenagements(amenagements.map(a => a.id === id ? { ...a, [field]: value } : a));
@@ -341,6 +370,18 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
             <h1 id="bp-titre-affiche" className="text-3xl font-black uppercase mb-2 tracking-tight">{titreAffiche}</h1>
             <p id="bp-sous-titre-affiche" className="text-lg font-bold text-blue-700 uppercase">{sousTitrePerso.trim() || `${config.specialiteNom} • ${area.nom}`}</p>
           </div>
+
+          {/* INTRODUCTION : profil de la zone et comparaison aux autres zones/villes, en texte */}
+          {paragraphesIntroduction.length > 0 && (
+            <div id="bp-introduction" className="mb-10">
+              <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4">Introduction</h3>
+              <div className="space-y-4 text-[13.5px] leading-relaxed text-slate-700">
+                {paragraphesIntroduction.map((paragraphe, i) => (
+                  <p key={i}>{paragraphe}</p>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* PERSONNALISATION DU DOCUMENT (titre, sous-titre, logo) */}
           <div className="mb-10 p-5 bg-white rounded-2xl border border-slate-200 shadow-sm print:hidden" id="bp-personnalisation">

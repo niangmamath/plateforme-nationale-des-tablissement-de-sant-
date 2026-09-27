@@ -214,6 +214,38 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
 
   const getActiveConfig = () => specialites.find((s) => s.id === selectedSpecialty) || null;
 
+  // Pour l'introduction en texte du business plan : toutes les zones de la ville active (pas
+  // seulement le top 10 pondéré de rankedAreas, qui dépend des curseurs) et la concurrence
+  // nationale par ville — deux ingrédients de comparaison "objective" (un rang par métrique brute,
+  // pas un score composite), calculés une fois par sélection de spécialité.
+  const zonesVilleComparables = useMemo(() => {
+    if (!selectedSpecialty) return [];
+    return zones.map((zone) => ({
+      nom: zone.nom,
+      population: zone.population,
+      densite: zone.densite ?? 0,
+      prixM2: zone.prixM2,
+      loyerM2: zone.loyerM2,
+      pop0_14: zone.pop0_14 ?? null,
+      pop15_59: zone.pop15_59 ?? null,
+      pop60_plus: zone.pop60_plus ?? null,
+      concurrenceCount: concurrenceParZone[zone.nom] ?? 0,
+      autresSpecCount: autresSpecialitesParZone[zone.nom] ?? 0,
+    }));
+  }, [selectedSpecialty, zones, concurrenceParZone, autresSpecialitesParZone]);
+
+  const villesComparables = useMemo(() => {
+    const categorie = specialites.find((s) => s.id === selectedSpecialty)?.categorieEtablissement;
+    if (!categorie) return [];
+    const totaux: Record<string, number> = {};
+    for (const v of villes) totaux[v.nom] = 0;
+    for (const e of etablissements) {
+      if (e.categorie !== categorie || !(e.ville in totaux)) continue;
+      totaux[e.ville] += 1;
+    }
+    return villes.map((v) => ({ nom: v.nom, concurrenceTotale: totaux[v.nom] ?? 0 }));
+  }, [etablissements, selectedSpecialty, specialites, villes]);
+
   return (
     <section className="bg-slate-900 rounded-3xl p-5 md:p-8 shadow-2xl border border-slate-800 text-white">
       <div className="text-center max-w-2xl mx-auto mb-10">
@@ -342,11 +374,14 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
 
       <AnimatePresence>
         {selectedAreaForBP && selectedSpecialty && getActiveConfig() && (
-          <BusinessPlanGenerator 
-            isOpen={!!selectedAreaForBP} 
-            onClose={() => setSelectedAreaForBP(null)} 
-            area={selectedAreaForBP} 
-            config={getActiveConfig()} 
+          <BusinessPlanGenerator
+            isOpen={!!selectedAreaForBP}
+            onClose={() => setSelectedAreaForBP(null)}
+            area={selectedAreaForBP}
+            config={getActiveConfig()}
+            ville={villeName}
+            zonesVille={zonesVilleComparables}
+            villesComparables={villesComparables}
           />
         )}
       </AnimatePresence>
