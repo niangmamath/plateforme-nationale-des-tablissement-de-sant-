@@ -35,8 +35,14 @@ export function useRoute(): Localisation & { naviguer: (cible: string) => void }
   const naviguer = useCallback((cible: string) => {
     const url = new URL(cible, window.location.origin);
     if (url.pathname === window.location.pathname && url.hash === window.location.hash) return;
+    const changeDePage = url.pathname !== window.location.pathname;
     window.history.pushState(null, '', cible);
     setLocalisation({ route: url.pathname, ancre: url.hash.replace(/^#/, '') });
+    // On change de page (ex. accueil -> simulateur de crédit) : la position de défilement d'avant
+    // n'a plus de sens sur le nouveau contenu, contrairement à un vrai rechargement de page, le
+    // navigateur ne la remet pas à zéro tout seul. Sans ancre ciblée sur la nouvelle page (une
+    // ancre de l'accueil se gère par son propre effet de défilement, dans App.tsx).
+    if (changeDePage && !url.hash) window.scrollTo(0, 0);
   }, []);
 
   return { ...localisation, naviguer };
