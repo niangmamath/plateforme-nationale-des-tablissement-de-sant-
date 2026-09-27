@@ -56,8 +56,9 @@ src/                      Frontend React
     (calcul du CPC prévisionnel 5 ans : src/utils/projectionBP.ts + projectionBP.test.ts)
     SimulateurCredit.tsx         Simulateur de crédit autonome (mensualité, tableau d'amortissement mois par mois) — indépendant
                                   du business plan, qui réutilise le même composant TableauAmortissementCredit.tsx en lecture seule
-    SiteHeader.tsx                En-tête + navigation (page d'accueil / simulateur de crédit), fragment d'URL #/... (hooks/useHashRoute.ts),
-                                  sans dépendance de routage ni config Vercel (jamais de requête serveur sur le fragment)
+    SiteHeader.tsx                En-tête + navigation (accueil, sections ancrées, simulateur de crédit), vraies URL via hooks/useRoute.ts
+                                  (History API, pas de dépendance de routage) — repli SPA sur index.html configuré dans vercel.json
+                                  pour toute route hors /api/..., et par défaut côté serveur Vite en développement
     BusinessPlan{Clinique,Dermato,Ophtalmo}.tsx   Variantes par spécialité du générateur
     ChatbotWidget.tsx            Widget de chat — réponses simulées par mots-clés, PAS d'appel IA réel
   config/

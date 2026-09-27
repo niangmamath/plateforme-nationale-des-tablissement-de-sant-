@@ -5,7 +5,7 @@
 import ScoringSection from './components/ScoringSection';
 import SimulateurCredit from './components/SimulateurCredit';
 import SiteHeader from './components/SiteHeader';
-import { useHashRoute } from './hooks/useHashRoute';
+import { useRoute } from './hooks/useRoute';
 import ChatbotWidget from './components/ChatbotWidget';
 import ScrollToggleButton from './components/ScrollToggleButton';
 import SignalementHost, { signalerAbsence, signalerCorrection } from './components/SignalementHost';
@@ -21,10 +21,10 @@ import LoadingScreen from './components/LoadingScreen';
 import { Plus, Database, Info, Heart } from 'lucide-react';
 
 export default function App() {
-  // Navigation par fragment d'URL (#/...) — voir hooks/useHashRoute.ts. Le branchement selon la
-  // route se fait tout en bas (après tous les hooks ci-dessous, jamais avant : un retour anticipé
-  // ici sauterait des hooks selon la page, ce qui casserait React à la prochaine navigation).
-  const route = useHashRoute();
+  // Navigation par vraie URL — voir hooks/useRoute.ts. Le branchement selon la route se fait tout
+  // en bas (après tous les hooks ci-dessous, jamais avant : un retour anticipé ici sauterait des
+  // hooks selon la page, ce qui casserait React à la prochaine navigation).
+  const { route, ancre, naviguer } = useRoute();
 
   // Données chargées depuis l'API (Postgres)
   const [countries, setCountries] = useState<PaysGeo[]>([]);
@@ -182,6 +182,14 @@ export default function App() {
     setSelectedId(establishment.id);
   };
 
+  // Section de l'accueil visée par un lien du menu (ex. "/#scoring-section") : on y défile une fois
+  // ses données chargées, plutôt que de compter sur le défilement natif du navigateur qui, lui, ne
+  // sait pas attendre qu'une section arrivée par fetch existe déjà dans le DOM.
+  useEffect(() => {
+    if (route !== '/' || isLoading || !ancre) return;
+    document.getElementById(ancre)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [route, ancre, isLoading]);
+
   if (loadError) {
     return (
       <div className="min-h-screen flex items-center justify-center text-rose-700 font-bold text-sm">
@@ -195,7 +203,7 @@ export default function App() {
   if (route === '/simulateur-credit') {
     return (
       <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-slate-50 via-blue-50/40 to-slate-100 text-slate-800 font-sans selection:bg-blue-600 selection:text-white pb-12">
-        <SiteHeader route={route} />
+        <SiteHeader route={route} ancre={ancre} naviguer={naviguer} />
         <main className="max-w-7xl mx-auto px-4 md:px-8 mt-8">
           <SimulateurCredit />
         </main>
@@ -210,7 +218,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-slate-50 via-blue-50/40 to-slate-100 text-slate-800 font-sans selection:bg-blue-600 selection:text-white pb-12">
 
-      <SiteHeader route={route} />
+      <SiteHeader route={route} ancre={ancre} naviguer={naviguer} />
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 md:px-8 mt-8 flex flex-col gap-6">
