@@ -32,9 +32,9 @@ interface SiteHeaderProps {
 
 // En-tête partagé par toutes les pages/sections — même logo, même navigation. "Analytique &
 // Intelligence Géospatiale" et "Où ouvrir" pointent vers une ancre de la page d'accueil (pas une
-// page à part) : le clic navigue
-// vers l'accueil si besoin, puis défile jusqu'à la section une fois ses données chargées (effet
-// dans App.tsx) ; si on y est déjà, ça défile directement, sans re-déclencher de chargement.
+// page à part) : le clic navigue vers l'accueil si besoin, puis défile jusqu'à la section une fois
+// ses données chargées (effet dans App.tsx) ; si on y est déjà, ça défile directement, sans
+// re-déclencher de chargement.
 export default function SiteHeader({ route, ancre, naviguer }: SiteHeaderProps) {
   return (
     <header className="sticky top-0 z-[1010] bg-white/80 backdrop-blur-xl border-b border-slate-200/80 px-4 py-4 md:px-8 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)]">
@@ -52,7 +52,9 @@ export default function SiteHeader({ route, ancre, naviguer }: SiteHeaderProps) 
           </div>
         </a>
 
-        <nav aria-label="Navigation principale" className="flex items-center gap-1.5 bg-slate-100/80 border border-slate-200/80 rounded-xl p-1 flex-wrap">
+        {/* Sur petit écran : grille sur toute la largeur, libellés visibles (2 colonnes, texte
+            centré, peut passer sur deux lignes). À partir de sm : rangée compacte comme avant. */}
+        <nav aria-label="Navigation principale" className="grid grid-cols-2 sm:flex sm:items-center gap-1.5 w-full sm:w-auto bg-slate-100/80 border border-slate-200/80 rounded-xl p-1">
           {LIENS.map(({ cible, label, icone: Icone }) => {
             const actif = estActif(cible, route, ancre);
             return (
@@ -61,12 +63,12 @@ export default function SiteHeader({ route, ancre, naviguer }: SiteHeaderProps) 
                 href={cible}
                 onClick={(e) => { e.preventDefault(); naviguer(cible); }}
                 aria-current={actif ? 'page' : undefined}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors ${
+                className={`flex items-center justify-center sm:justify-start gap-1.5 px-3 py-2 rounded-lg text-center text-[11px] sm:text-xs font-bold uppercase tracking-wide leading-tight transition-colors ${
                   actif ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
-                <Icone className="h-4 w-4" />
-                <span className="hidden sm:inline">{label}</span>
+                <Icone className="h-4 w-4 shrink-0" />
+                <span>{label}</span>
               </a>
             );
           })}
