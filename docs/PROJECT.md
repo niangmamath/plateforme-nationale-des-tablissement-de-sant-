@@ -56,6 +56,8 @@ src/                      Frontend React
     (calcul du CPC prévisionnel 5 ans : src/utils/projectionBP.ts + projectionBP.test.ts)
     SimulateurCredit.tsx         Simulateur de crédit autonome (mensualité, tableau d'amortissement mois par mois) — indépendant
                                   du business plan, qui réutilise le même composant TableauAmortissementCredit.tsx en lecture seule
+    SiteHeader.tsx                En-tête + navigation (page d'accueil / simulateur de crédit), fragment d'URL #/... (hooks/useHashRoute.ts),
+                                  sans dépendance de routage ni config Vercel (jamais de requête serveur sur le fragment)
     BusinessPlan{Clinique,Dermato,Ophtalmo}.tsx   Variantes par spécialité du générateur
     ChatbotWidget.tsx            Widget de chat — réponses simulées par mots-clés, PAS d'appel IA réel
   config/

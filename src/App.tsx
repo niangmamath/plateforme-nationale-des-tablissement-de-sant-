@@ -4,6 +4,8 @@
  */
 import ScoringSection from './components/ScoringSection';
 import SimulateurCredit from './components/SimulateurCredit';
+import SiteHeader from './components/SiteHeader';
+import { useHashRoute } from './hooks/useHashRoute';
 import ChatbotWidget from './components/ChatbotWidget';
 import ScrollToggleButton from './components/ScrollToggleButton';
 import SignalementHost, { signalerAbsence, signalerCorrection } from './components/SignalementHost';
@@ -16,9 +18,14 @@ import SidebarList from './components/SidebarList';
 import InteractiveMap from './components/InteractiveMap';
 import StatsDashboard from './components/StatsDashboard';
 import LoadingScreen from './components/LoadingScreen';
-import { Activity, Plus, Database, Info, Heart } from 'lucide-react';
+import { Plus, Database, Info, Heart } from 'lucide-react';
 
 export default function App() {
+  // Navigation par fragment d'URL (#/...) — voir hooks/useHashRoute.ts. Le branchement selon la
+  // route se fait tout en bas (après tous les hooks ci-dessous, jamais avant : un retour anticipé
+  // ici sauterait des hooks selon la page, ce qui casserait React à la prochaine navigation).
+  const route = useHashRoute();
+
   // Données chargées depuis l'API (Postgres)
   const [countries, setCountries] = useState<PaysGeo[]>([]);
   const [baseEstablishments, setBaseEstablishments] = useState<Etablissement[]>([]);
@@ -183,6 +190,19 @@ export default function App() {
     );
   }
 
+  // Le simulateur de crédit ne dépend d'aucune donnée de l'annuaire : rendu avant la porte
+  // isLoading/selectedCountry ci-dessous, pour s'afficher instantanément même si l'API est lente.
+  if (route === '/simulateur-credit') {
+    return (
+      <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-slate-50 via-blue-50/40 to-slate-100 text-slate-800 font-sans selection:bg-blue-600 selection:text-white pb-12">
+        <SiteHeader route={route} />
+        <main className="max-w-7xl mx-auto px-4 md:px-8 mt-8">
+          <SimulateurCredit />
+        </main>
+      </div>
+    );
+  }
+
   if (isLoading || !selectedCountry) {
     return <LoadingScreen />;
   }
@@ -190,23 +210,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-slate-50 via-blue-50/40 to-slate-100 text-slate-800 font-sans selection:bg-blue-600 selection:text-white pb-12">
 
-      {/* Modern High-End Top Bar / Navigation */}
-      <header className="sticky top-0 z-[1010] bg-white/80 backdrop-blur-xl border-b border-slate-200/80 px-4 py-4 md:px-8 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)]">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          
-          {/* Logo Brand / Identity */}
-          <div className="flex items-center gap-3.5">
-            <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-lg shadow-blue-600/30">
-              <Activity className="h-5.5 w-5.5 stroke-[2.5]" />
-            </div>
-            <div>
-              <h1 className="text-sm md:text-lg font-black text-slate-900 tracking-tight mt-1 uppercase">
-                Empower Doctor
-              </h1>
-            </div>
-          </div>
-        </div>
-      </header>
+      <SiteHeader route={route} />
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 md:px-8 mt-8 flex flex-col gap-6">
@@ -284,9 +288,6 @@ export default function App() {
             currency={selectedCountry.devise}
           />
         </section>
-
-        {/* Simulateur de crédit autonome — indépendant du business plan, voir components/SimulateurCredit.tsx */}
-        <SimulateurCredit />
 
       </main>
 
