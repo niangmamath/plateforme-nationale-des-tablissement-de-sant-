@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import ScoringSection from './components/ScoringSection';
+import SimulateurCredit from './components/SimulateurCredit';
 import ChatbotWidget from './components/ChatbotWidget';
 import ScrollToggleButton from './components/ScrollToggleButton';
 import SignalementHost, { signalerAbsence, signalerCorrection } from './components/SignalementHost';
@@ -283,6 +284,9 @@ export default function App() {
             currency={selectedCountry.devise}
           />
         </section>
+
+        {/* Simulateur de crédit autonome — indépendant du business plan, voir components/SimulateurCredit.tsx */}
+        <SimulateurCredit />
 
       </main>
 

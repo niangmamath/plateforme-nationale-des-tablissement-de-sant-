@@ -58,6 +58,35 @@ export interface LigneAnnee {
 
 const somme = (valeurs: number[]) => valeurs.reduce((a, b) => a + b, 0);
 
+export interface LigneMensualite {
+  mois: number; // 1 = premier mois du crédit (relatif au déblocage, pas un mois calendaire)
+  mensualite: number;
+  interets: number;
+  capital: number;
+  capitalRestantDu: number; // après paiement de cette mensualité
+}
+
+// Tableau d'amortissement complet d'un crédit à annuités constantes, indépendant de tout calendrier
+// d'exploitation — c'est le calcul de base du simulateur de crédit autonome, réutilisé par
+// echeancierCredit ci-dessous pour l'agréger par exercice civil dans le CPC prévisionnel.
+export function tableauAmortissement(credit: number, tauxAnnuelPct: number, dureeAnnees: number): LigneMensualite[] {
+  const nbMensualites = Math.round(dureeAnnees * 12);
+  if (credit <= 0 || nbMensualites <= 0) return [];
+
+  const r = tauxAnnuelPct / 100 / 12;
+  const mensualite = r === 0 ? credit / nbMensualites : (credit * r) / (1 - Math.pow(1 + r, -nbMensualites));
+  let restant = credit;
+  const lignes: LigneMensualite[] = [];
+  for (let k = 0; k < nbMensualites; k++) {
+    const interetMois = restant * r;
+    // Dernière mensualité : solde le capital restant plutôt que d'accumuler un écart d'arrondi.
+    const capitalMois = k === nbMensualites - 1 ? restant : mensualite - interetMois;
+    restant -= capitalMois;
+    lignes.push({ mois: k + 1, mensualite: interetMois + capitalMois, interets: interetMois, capital: capitalMois, capitalRestantDu: Math.max(0, restant) });
+  }
+  return lignes;
+}
+
 // Intérêts et capital remboursé par exercice civil (index 0 = année 1). Le crédit est débloqué au
 // mois de démarrage et remboursé par mensualités constantes dès ce mois.
 export function echeancierCredit(
@@ -69,20 +98,11 @@ export function echeancierCredit(
 ): { interets: number[]; capital: number[] } {
   const interets = new Array(nbAnnees).fill(0);
   const capital = new Array(nbAnnees).fill(0);
-  const nbMensualites = Math.round(dureeAnnees * 12);
-  if (credit <= 0 || nbMensualites <= 0) return { interets, capital };
-
-  const r = tauxCreditPct / 100 / 12;
-  const mensualite = r === 0 ? credit / nbMensualites : (credit * r) / (1 - Math.pow(1 + r, -nbMensualites));
-  let restant = credit;
-  for (let k = 0; k < nbMensualites; k++) {
-    const indexAnnee = Math.floor((moisDemarrage - 1 + k) / 12);
+  for (const ligne of tableauAmortissement(credit, tauxCreditPct, dureeAnnees)) {
+    const indexAnnee = Math.floor((moisDemarrage - 1 + ligne.mois - 1) / 12);
     if (indexAnnee >= nbAnnees) break;
-    const interetMois = restant * r;
-    const capitalMois = mensualite - interetMois;
-    interets[indexAnnee] += interetMois;
-    capital[indexAnnee] += capitalMois;
-    restant -= capitalMois;
+    interets[indexAnnee] += ligne.interets;
+    capital[indexAnnee] += ligne.capital;
   }
   return { interets, capital };
 }

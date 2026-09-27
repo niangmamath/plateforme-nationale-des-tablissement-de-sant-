@@ -4,6 +4,7 @@ import { X, FileText, Calculator, CalendarDays, Landmark, Download, Plus, Trash2
 import { motion } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { JOURS_PAR_MOIS_DEFAUT, projeter } from '../utils/projectionBP';
+import TableauAmortissementCredit from './TableauAmortissementCredit';
 
 interface BusinessPlanGeneratorProps {
   isOpen: boolean;
@@ -633,6 +634,13 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config }:
                 <h4 className="font-black text-[#856614] text-lg leading-tight mb-1">Demande de Financement</h4>
                 <p className="text-sm text-[#a3801f]">Enregistrez ce PDF pour le transmettre à la banque concernant le crédit de <strong className="font-black">{formatDH(creditSollicite)}</strong> pour votre projet.</p>
               </div>
+            </div>
+
+            {/* Détail mensuel du crédit sollicité — même calcul et même composant que la page
+                "Simulateur de crédit" autonome, ici en lecture seule à partir du crédit ci-dessus. */}
+            <div className="mt-6 p-5 bg-white border border-slate-200 rounded-xl">
+              <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-3">Échéancier du crédit sollicité</h4>
+              <TableauAmortissementCredit montant={creditSollicite} tauxPct={tauxInteretCredit} dureeAnnees={dureeCreditAnnees} reploiParDefaut titre="Détail mois par mois" />
             </div>
           </div>
 

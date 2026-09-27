@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { echeancierCredit, JOURS_PAR_MOIS_DEFAUT, projeter, type ParamsProjection } from './projectionBP';
+import { echeancierCredit, JOURS_PAR_MOIS_DEFAUT, projeter, tableauAmortissement, type ParamsProjection } from './projectionBP';
 
 const base: ParamsProjection = {
   caParJour: 1000,
@@ -137,6 +137,56 @@ describe('projeter — report des déficits', () => {
       expect(l.resultatImposable).toBe(0);
       expect(l.impot).toBe(0);
     }
+  });
+});
+
+describe('tableauAmortissement', () => {
+  it('rembourse exactement le capital, mensualité constante sauf la dernière ligne (solde)', () => {
+    const lignes = tableauAmortissement(500000, 4.65, 4);
+    expect(lignes).toHaveLength(48);
+    expect(lignes.reduce((a, l) => a + l.capital, 0)).toBeCloseTo(500000, 6);
+    const mensualites = new Set(lignes.slice(0, -1).map((l) => Math.round(l.mensualite * 100)));
+    expect(mensualites.size).toBe(1); // toutes identiques à l'arrondi près, sauf la dernière
+    expect(lignes[lignes.length - 1].capitalRestantDu).toBe(0);
+  });
+
+  it('le capital restant dû décroît à chaque mois et les intérêts avec lui', () => {
+    const lignes = tableauAmortissement(300000, 5, 3);
+    for (let i = 1; i < lignes.length; i++) {
+      expect(lignes[i].capitalRestantDu).toBeLessThan(lignes[i - 1].capitalRestantDu);
+      expect(lignes[i].interets).toBeLessThan(lignes[i - 1].interets);
+    }
+    expect(lignes[0].capitalRestantDu).toBeCloseTo(300000 - lignes[0].capital, 6);
+  });
+
+  it('mois = 1, 2, 3… dans l\'ordre, sans trou', () => {
+    const lignes = tableauAmortissement(100000, 3, 2);
+    expect(lignes.map((l) => l.mois)).toEqual(Array.from({ length: 24 }, (_, i) => i + 1));
+  });
+
+  it('taux nul : capital réparti à parts égales, aucun intérêt', () => {
+    const lignes = tableauAmortissement(120000, 0, 1);
+    expect(lignes.every((l) => l.interets === 0)).toBe(true);
+    expect(lignes.every((l) => Math.abs(l.capital - 10000) < 1e-6)).toBe(true);
+  });
+
+  it('sans crédit ou sans durée : tableau vide', () => {
+    expect(tableauAmortissement(0, 5, 7)).toEqual([]);
+    expect(tableauAmortissement(100000, 5, 0)).toEqual([]);
+  });
+
+  it('cohérent avec echeancierCredit : mêmes totaux annuels une fois regroupé par exercice civil', () => {
+    const credit = 400000, taux = 4.2, duree = 5, moisDemarrage = 4;
+    const { interets, capital } = echeancierCredit(credit, taux, duree, moisDemarrage, 6);
+    const lignes = tableauAmortissement(credit, taux, duree);
+    const interetsRecalcules = new Array(6).fill(0);
+    const capitalRecalcule = new Array(6).fill(0);
+    for (const l of lignes) {
+      const annee = Math.floor((moisDemarrage - 1 + l.mois - 1) / 12);
+      if (annee < 6) { interetsRecalcules[annee] += l.interets; capitalRecalcule[annee] += l.capital; }
+    }
+    interets.forEach((v, i) => expect(v).toBeCloseTo(interetsRecalcules[i], 6));
+    capital.forEach((v, i) => expect(v).toBeCloseTo(capitalRecalcule[i], 6));
   });
 });
 
