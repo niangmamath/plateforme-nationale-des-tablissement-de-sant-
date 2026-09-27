@@ -52,9 +52,12 @@ export default function SiteHeader({ route, ancre, naviguer }: SiteHeaderProps) 
           </div>
         </a>
 
-        {/* Sur petit écran : grille sur toute la largeur, libellés visibles (2 colonnes, texte
-            centré, peut passer sur deux lignes). À partir de sm : rangée compacte comme avant. */}
-        <nav aria-label="Navigation principale" className="grid grid-cols-2 sm:flex sm:items-center gap-1.5 w-full sm:w-auto bg-slate-100/80 border border-slate-200/80 rounded-xl p-1">
+        {/* Les 4 liens restent alignés sur une seule rangée à toutes les tailles (une grille sur
+            deux lignes prenait trop de hauteur). Sur petit écran, icône au-dessus du libellé et
+            texte plus petit pour que le libellé le plus long ("Analytique & Intelligence
+            Géospatiale") tienne dans sa colonne, quitte à passer sur 2-3 lignes ; à partir de sm,
+            icône et libellé reviennent côte à côte sur une seule ligne. */}
+        <nav aria-label="Navigation principale" className="grid grid-cols-4 sm:flex sm:items-center gap-1 sm:gap-1.5 w-full sm:w-auto bg-slate-100/80 border border-slate-200/80 rounded-xl p-1">
           {LIENS.map(({ cible, label, icone: Icone }) => {
             const actif = estActif(cible, route, ancre);
             return (
@@ -63,7 +66,7 @@ export default function SiteHeader({ route, ancre, naviguer }: SiteHeaderProps) 
                 href={cible}
                 onClick={(e) => { e.preventDefault(); naviguer(cible); }}
                 aria-current={actif ? 'page' : undefined}
-                className={`flex items-center justify-center sm:justify-start gap-1.5 px-3 py-2 rounded-lg text-center text-[11px] sm:text-xs font-bold uppercase tracking-wide leading-tight transition-colors ${
+                className={`flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-1.5 sm:py-2 rounded-lg text-center sm:text-left text-[9px] sm:text-xs font-bold uppercase tracking-wide leading-tight transition-colors ${
                   actif ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
