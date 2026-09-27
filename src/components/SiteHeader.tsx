@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Activity, Map, BarChart3, Target, Landmark } from 'lucide-react';
+import { Activity, Map, BarChart3, MapPin, Landmark } from 'lucide-react';
 
 interface LienNav {
   cible: string; // chemin réel, avec ancre éventuelle : "/", "/#scoring-section", "/simulateur-credit"...
@@ -15,7 +15,7 @@ interface LienNav {
 const LIENS: LienNav[] = [
   { cible: '/', label: 'Annuaire & carte', icone: Map },
   { cible: '/#analytics-section', label: 'Analytique & Intelligence Géospatiale', icone: BarChart3 },
-  { cible: '/#scoring-section', label: 'Où ouvrir', icone: Target },
+  { cible: '/#scoring-section', label: 'Où ouvrir', icone: MapPin },
   { cible: '/simulateur-credit', label: 'Simulateur de crédit', icone: Landmark },
 ];
 
