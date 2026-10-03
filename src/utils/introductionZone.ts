@@ -132,15 +132,31 @@ function paragrapheComparaisonNationale(ville: string, villes: VilleComparable[]
   return phrase;
 }
 
+export interface SectionsIntroduction {
+  profilEconomique: string; // démographie + pouvoir d'achat de la zone — réutilisé tel quel par l'Étude Économique du business plan
+  concurrenceLocale: string; // réutilisé tel quel par l'Étude Commerciale (section Concurrence) du business plan
+  comparaisonZones: string | null;
+  comparaisonNationale: string | null;
+}
+
+// Mêmes paragraphes que `genererIntroduction`, mais nommés individuellement : le business plan a
+// besoin de réutiliser le profil économique et la concurrence locale dans des sections distinctes
+// (Étude Économique, Étude Commerciale) sans dupliquer la logique de génération.
+export function genererSectionsIntroduction(p: ParametresIntroduction): SectionsIntroduction {
+  return {
+    profilEconomique: paragrapheProfil(p.zone, p.zonesVille),
+    concurrenceLocale: paragrapheConcurrenceLocale(p.zone, p.specialiteNom),
+    comparaisonZones: paragrapheComparaisonZones(p.zone, p.zonesVille, p.ville, p.specialiteNom),
+    comparaisonNationale: paragrapheComparaisonNationale(p.ville, p.villes, p.specialiteNom),
+  };
+}
+
 // Renvoie les paragraphes du texte d'introduction, dans l'ordre d'affichage. Un paragraphe de
 // comparaison absent (une seule zone dans la ville, ou une seule ville couverte) est simplement
 // omis plutôt que rempli avec une comparaison qui n'a pas de sens.
 export function genererIntroduction(p: ParametresIntroduction): string[] {
-  const paragraphes = [
-    paragrapheProfil(p.zone, p.zonesVille),
-    paragrapheConcurrenceLocale(p.zone, p.specialiteNom),
-    paragrapheComparaisonZones(p.zone, p.zonesVille, p.ville, p.specialiteNom),
-    paragrapheComparaisonNationale(p.ville, p.villes, p.specialiteNom),
-  ];
-  return paragraphes.filter((para): para is string => !!para);
+  const s = genererSectionsIntroduction(p);
+  return [s.profilEconomique, s.concurrenceLocale, s.comparaisonZones, s.comparaisonNationale].filter(
+    (para): para is string => !!para
+  );
 }

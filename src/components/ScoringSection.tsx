@@ -37,6 +37,7 @@ interface SpecialiteApi {
   fraisPreliminaires: number;
   surfaceDefaut: number;
   bfr: number;
+  clienteleType: string | null;
   amenagements: { id: number; nom: string; prix: number }[];
   effectifs: { id: number; nom: string; qte: number; salaire: number }[];
   machines: { id: number; nom: string; prix: number }[];

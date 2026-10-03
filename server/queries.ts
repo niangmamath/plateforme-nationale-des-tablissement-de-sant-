@@ -87,6 +87,7 @@ export async function getSpecialites(pool: Pool) {
     fraisPreliminaires: Number(s.frais_preliminaires),
     surfaceDefaut: s.surface_defaut,
     bfr: Number(s.bfr),
+    clienteleType: s.clientele_type,
     amenagements: amenagements
       .filter((a) => a.specialiteId === s.id)
       .map(({ specialiteId, ...a }) => ({ ...a, prix: Number(a.prix) })),

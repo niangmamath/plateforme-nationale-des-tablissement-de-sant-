@@ -4,6 +4,7 @@
  */
 import ScoringSection from './components/ScoringSection';
 import SimulateurCredit from './components/SimulateurCredit';
+import SimulateurChaabiIntelak from './components/SimulateurChaabiIntelak';
 import SiteHeader from './components/SiteHeader';
 import { useRoute } from './hooks/useRoute';
 import { appliquerMeta } from './utils/seo';
@@ -39,6 +40,7 @@ export default function App() {
   const [specialites, setSpecialites] = useState<Specialite[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [simulateurActif, setSimulateurActif] = useState<'notre' | 'chaabi'>('notre');
 
   useEffect(() => {
     Promise.all([
@@ -214,7 +216,29 @@ export default function App() {
       <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-slate-50 via-blue-50/40 to-slate-100 text-slate-800 font-sans selection:bg-blue-600 selection:text-white pb-12">
         <SiteHeader route={route} ancre={ancre} naviguer={naviguer} />
         <main className="max-w-7xl mx-auto px-4 md:px-8 mt-8">
-          <SimulateurCredit />
+          <div className="flex flex-wrap gap-3 justify-center">
+            <button
+              type="button"
+              onClick={() => setSimulateurActif('notre')}
+              aria-pressed={simulateurActif === 'notre'}
+              className={`px-5 py-2.5 rounded-xl text-sm font-black uppercase tracking-wide transition-colors ${
+                simulateurActif === 'notre' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              Simulateur Personnalisé
+            </button>
+            <button
+              type="button"
+              onClick={() => setSimulateurActif('chaabi')}
+              aria-pressed={simulateurActif === 'chaabi'}
+              className={`px-5 py-2.5 rounded-xl text-sm font-black uppercase tracking-wide transition-colors ${
+                simulateurActif === 'chaabi' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              Offres Intelak
+            </button>
+          </div>
+          {simulateurActif === 'notre' ? <SimulateurCredit /> : <SimulateurChaabiIntelak />}
         </main>
       </div>
     );

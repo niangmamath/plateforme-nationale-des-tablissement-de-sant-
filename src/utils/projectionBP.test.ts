@@ -190,6 +190,78 @@ describe('tableauAmortissement', () => {
   });
 });
 
+describe('tableauAmortissement — différé', () => {
+  it("sans différé, passer dureeDiffereMois est sans effet (typeDiffere par défaut 'aucun')", () => {
+    const sansParams = tableauAmortissement(300000, 5, 5);
+    const avecDureeIgnoree = tableauAmortissement(300000, 5, 5, 12);
+    expect(avecDureeIgnoree).toEqual(sansParams);
+  });
+
+  it("différé capital : intérêts seuls payés pendant le différé, capital intact", () => {
+    const lignes = tableauAmortissement(300000, 6, 5, 12, 'capital');
+    expect(lignes).toHaveLength(60);
+    const differe = lignes.slice(0, 12);
+    for (const l of differe) {
+      expect(l.capital).toBe(0);
+      expect(l.capitalRestantDu).toBe(300000);
+      expect(l.mensualite).toBeCloseTo(l.interets, 6);
+      expect(l.interets).toBeCloseTo(300000 * (0.06 / 12), 6); // taux fixe, capital inchangé
+    }
+    // le capital total remboursé reste exactement le montant emprunté (jamais touché pendant le différé)
+    expect(lignes.reduce((a, l) => a + l.capital, 0)).toBeCloseTo(300000, 4);
+    expect(lignes[lignes.length - 1].capitalRestantDu).toBe(0);
+    // l'amortissement reprend sur les 48 mois restants : mensualités égales entre elles après le différé
+    const mensualitesApres = new Set(lignes.slice(12, -1).map((l) => Math.round(l.mensualite * 100)));
+    expect(mensualitesApres.size).toBe(1);
+  });
+
+  it('différé intérêt & capital : rien payé, intérêts capitalisés (capital restant dû augmente)', () => {
+    const lignes = tableauAmortissement(300000, 6, 5, 12, 'interetCapital');
+    const differe = lignes.slice(0, 12);
+    for (const l of differe) {
+      expect(l.mensualite).toBe(0);
+      expect(l.capital).toBe(0);
+    }
+    // le capital restant dû croît mois après mois (intérêts capitalisés)
+    for (let i = 1; i < differe.length; i++) {
+      expect(differe[i].capitalRestantDu).toBeGreaterThan(differe[i - 1].capitalRestantDu);
+    }
+    expect(differe[differe.length - 1].capitalRestantDu).toBeGreaterThan(300000);
+    // au final, le capital total "remboursé" (phase d'amortissement) dépasse le montant emprunté :
+    // la différence, ce sont les intérêts capitalisés pendant le différé.
+    const capitalTotal = lignes.reduce((a, l) => a + l.capital, 0);
+    expect(capitalTotal).toBeGreaterThan(300000);
+    expect(lignes[lignes.length - 1].capitalRestantDu).toBe(0);
+  });
+
+  it("différé intérêt (seul) : capital remboursé par tranches linéaires, intérêts capitalisés", () => {
+    const lignes = tableauAmortissement(300000, 6, 5, 12, 'interet');
+    const differe = lignes.slice(0, 12);
+    const trancheAttendue = 300000 / 60;
+    for (const l of differe) {
+      expect(l.capital).toBeCloseTo(trancheAttendue, 6);
+      expect(l.mensualite).toBeCloseTo(trancheAttendue, 6); // seul le capital est payé
+    }
+    // intérêts non payés pendant le différé → capitalisés, donc le capital restant dû ne baisse pas
+    // aussi vite qu'un simple remboursement de tranche l'aurait fait seul.
+    expect(differe[differe.length - 1].capitalRestantDu).toBeGreaterThan(300000 - 12 * trancheAttendue);
+    expect(lignes[lignes.length - 1].capitalRestantDu).toBe(0);
+  });
+
+  it("intérêts simples pendant le différé (pas composés) : reproduit au centime près le simulateur Al Moukawil Chaabi (100 000 DH, 2 %/an, 24 mois de différé, 84 mois de durée) -> 1 822,89 DH/mois", () => {
+    const lignes = tableauAmortissement(100000, 2, 7, 24, 'interetCapital');
+    expect(lignes[24].mensualite).toBeCloseTo(1822.89, 2);
+  });
+
+  it('un différé plus long réduit la mensualité après différé mais augmente le coût total du crédit', () => {
+    const sansDiffere = tableauAmortissement(300000, 6, 5);
+    const avecDiffere = tableauAmortissement(300000, 6, 5, 12, 'interetCapital');
+    const coutSansDiffere = sansDiffere.reduce((a, l) => a + l.interets, 0);
+    const coutAvecDiffere = avecDiffere.reduce((a, l) => a + l.interets, 0);
+    expect(coutAvecDiffere).toBeGreaterThan(coutSansDiffere);
+  });
+});
+
 describe('echeancierCredit', () => {
   it('rembourse exactement le capital sur la durée (démarrage en janvier)', () => {
     const { capital, interets } = echeancierCredit(500000, 4.65, 4, 1, 5);

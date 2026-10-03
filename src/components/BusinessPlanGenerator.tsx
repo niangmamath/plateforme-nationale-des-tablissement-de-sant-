@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { X, FileText, Calculator, CalendarDays, Landmark, Download, Plus, Trash2, Printer, Image as ImageIcon } from 'lucide-react';
 import { motion } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
-import { JOURS_PAR_MOIS_DEFAUT, projeter } from '../utils/projectionBP';
-import { genererIntroduction, type ZoneComparable, type VilleComparable } from '../utils/introductionZone';
-import TableauAmortissementCredit from './TableauAmortissementCredit';
+import { JOURS_PAR_MOIS_DEFAUT, projeter, type TypeDiffere } from '../utils/projectionBP';
+import { genererSectionsIntroduction, type ZoneComparable, type VilleComparable } from '../utils/introductionZone';
+import TableauAmortissementCredit, { LIBELLE_DIFFERE } from './TableauAmortissementCredit';
 
 interface BusinessPlanGeneratorProps {
   isOpen: boolean;
@@ -27,6 +27,26 @@ const TITRE_DEFAUT = 'Étude de Faisabilité et Business Plan';
 const TYPES_LOGO = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
 const TAILLE_MAX_LOGO = 2 * 1024 * 1024; // 2 Mo
 const arrondi2 = (n: number) => Math.round(n * 100) / 100;
+// Les <textarea> du document (champs libres éditables) avaient une hauteur fixe : un texte un peu
+// long faisait apparaître un ascenseur interne et le reste du contenu n'était ni visible à l'écran
+// ni imprimé. Se contenter d'un onInput ne suffit pas : plusieurs de ces champs affichent par défaut
+// un texte généré (ex. "value={champ || texteGénéré}") qui peut déjà être long au premier rendu, avant
+// toute frappe — l'ascenseur apparaissait alors sans qu'aucun événement input ne se déclenche jamais.
+// Ce composant agrandit la case à chaque changement de `value`, qu'il vienne de la frappe ou du texte
+// par défaut, et la ré-agrandit si ce texte par défaut change (ex. données de zone chargées après coup).
+function AutoTextarea({ value, className, ...rest }: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { value: string }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    // scrollHeight exclut les bordures (border-box) : sans ce complément la case retombe 1-2px trop
+    // courte et masque un rien du bas de la dernière ligne (overflow-hidden ne laisse rien voir).
+    const bordures = el.offsetHeight - el.clientHeight;
+    el.style.height = `${el.scrollHeight + bordures}px`;
+  }, [value]);
+  return <textarea ref={ref} value={value} className={`${className ?? ''} resize-none overflow-hidden`} {...rest} />;
+}
 const NOMS_MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
 export default function BusinessPlanGenerator({ isOpen, onClose, area, config, ville, zonesVille, villesComparables }: BusinessPlanGeneratorProps) {
@@ -51,6 +71,42 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
   const [sousTitrePerso, setSousTitrePerso] = useState('');
   const [logo, setLogo] = useState<string | null>(null);
   const [logoErreur, setLogoErreur] = useState('');
+
+  // Contenu rédigé (page de garde, présentation du projet, renseignements sur la promotrice,
+  // étude commerciale) — ce sont des faits propres au dossier (identité, parcours, clientèle visée)
+  // que rien dans la base ne peut connaître : chaque champ part vide, à remplir par l'utilisateur,
+  // jamais pré-rempli avec une affirmation inventée. Comme le reste de la personnalisation, rien
+  // n'est mémorisé d'un dossier à l'autre.
+  const [adresseCabinet, setAdresseCabinet] = useState('');
+  const [identifiantsCabinet, setIdentifiantsCabinet] = useState('');
+  const [denominationSociale, setDenominationSociale] = useState('');
+  const [formeJuridique, setFormeJuridique] = useState('');
+  const [promoteurNom, setPromoteurNom] = useState('');
+  // Le projet peut être porté par une femme comme par un homme : le mot utilisé dans les titres de
+  // section ("Promoteur(trice)") est donc modifiable, pas figé au féminin.
+  const [titrePromoteur, setTitrePromoteur] = useState('Promoteur(trice)');
+  // Fiche d'identité du/de la promoteur(trice) (Partie II) : des faits propres à la personne que
+  // rien dans l'app ne peut connaître — chaque champ part vide, comme le reste de la personnalisation.
+  const [adressePromoteur, setAdressePromoteur] = useState('');
+  const [diplomesObtenus, setDiplomesObtenus] = useState('');
+  const [experienceProfessionnelle, setExperienceProfessionnelle] = useState('');
+  const [relationsBancaires, setRelationsBancaires] = useState('');
+  const [clienteleTexte, setClienteleTexte] = useState('');
+  // Prestations et Concurrence (Partie IV) : pré-remplis avec un texte généré à partir de données
+  // réelles (actes saisis, profil de zone), mais modifiables — même principe que titrePerso/
+  // sousTitrePerso : chaîne vide = on affiche la valeur générée, sinon on affiche la saisie de
+  // l'utilisateur.
+  const [prestationsTexte, setPrestationsTexte] = useState('');
+  const [concurrenceTexte, setConcurrenceTexte] = useState('');
+  // Tous les autres paragraphes générés du document (activité, objet du programme, nature de
+  // l'activité, emplacement, profession actuelle, local) suivent le même principe : affichés et
+  // modifiables, le texte saisi remplace le texte généré dès la première frappe.
+  const [activiteEntrepriseTexte, setActiviteEntrepriseTexte] = useState('');
+  const [objetProgrammeTexte, setObjetProgrammeTexte] = useState('');
+  const [natureActiviteTexte, setNatureActiviteTexte] = useState('');
+  const [emplacementTexte, setEmplacementTexte] = useState('');
+  const [professionActuelleTexte, setProfessionActuelleTexte] = useState('');
+  const [localTexte, setLocalTexte] = useState('');
   const [machines, setMachines] = useState<any[]>([]);
   // Les prix des machines sont toujours stockés HT (tout le calcul en aval part du HT) ; ce choix ne
   // change que la saisie et l'affichage : en TTC, on affiche HT × (1 + TVA) et on convertit à la saisie.
@@ -101,6 +157,9 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
   // obtenu auprès de la banque si disponible.
   const [tauxInteretCredit, setTauxInteretCredit] = useState<number>(4.65);
   const [dureeCreditAnnees, setDureeCreditAnnees] = useState<number>(7);
+  // Différé de remboursement — aucun par défaut, pour ne rien changer aux dossiers déjà en cours.
+  const [typeDiffere, setTypeDiffere] = useState<TypeDiffere>('aucun');
+  const [dureeDiffereMois, setDureeDiffereMois] = useState<number>(24);
 
   // --- PRÉVISIONNEL SUR 5 ANS ---
   // Calendrier : l'année 1 va du mois de démarrage au 31 décembre (exercice civil). Les jours
@@ -171,12 +230,15 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
 
   if (!isOpen || !area || !config) return null;
 
-  // Introduction en texte : profil de la zone puis comparaison, à partir des données que
-  // ScoringSection fournit (ville, zonesVille, villesComparables). Ces props sont optionnelles :
-  // si elles manquent, aucune introduction ne s'affiche plutôt que d'inventer une comparaison.
-  const paragraphesIntroduction =
+  // Profil de zone, concurrence locale et comparaisons, à partir des données que ScoringSection
+  // fournit (ville, zonesVille, villesComparables). Ces props sont optionnelles : si elles manquent,
+  // aucun de ces paragraphes ne s'affiche plutôt que d'inventer une comparaison. Les 4 paragraphes
+  // sont répartis dans des sections distinctes du document (chacun affiché une seule fois) : profil
+  // → Partie I "Emplacement" ; comparaisons → Partie IV "Étude Économique" ; concurrence → Partie IV
+  // "Étude Commerciale".
+  const sectionsIntroduction =
     ville && zonesVille && villesComparables
-      ? genererIntroduction({
+      ? genererSectionsIntroduction({
           zone: {
             nom: area.nom,
             population: area.population,
@@ -194,7 +256,51 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
           villes: villesComparables,
           specialiteNom: config.nom,
         })
-      : [];
+      : null;
+  // Étude Économique (Partie IV.I) : positionnement comparatif de la zone (vs les autres zones de la
+  // ville, vs les autres villes). Si aucune comparaison n'est possible (une seule zone/ville connue),
+  // on retombe sur le profil de zone plutôt que de laisser la section vide.
+  const paragraphesEtudeEconomique = sectionsIntroduction
+    ? [sectionsIntroduction.comparaisonZones, sectionsIntroduction.comparaisonNationale].filter((para): para is string => !!para)
+    : [];
+  const paragraphesEtudeEconomiqueAffiches =
+    paragraphesEtudeEconomique.length > 0 ? paragraphesEtudeEconomique : sectionsIntroduction ? [sectionsIntroduction.profilEconomique] : [];
+
+  // "Nature de l'activité" : construite à partir de données réelles (spécialité, zone, actes déjà
+  // saisis dans le tableau IV) — jamais de texte libre inventé ici, contrairement aux champs sur la
+  // promotrice ci-dessus qui restent à la charge de l'utilisateur.
+  const listeActes = actes.map((a) => a.nom).filter(Boolean);
+  const texteNatureActivite = area
+    ? `Le projet consiste en la création d'un cabinet de ${config.nom}${area?.nom ? ` à ${area.nom}` : ''}` +
+      (listeActes.length > 0
+        ? `, proposant notamment : ${listeActes.slice(0, -1).join(', ')}${listeActes.length > 1 ? ' et ' : ''}${listeActes[listeActes.length - 1]}.`
+        : '.')
+    : '';
+  // "Objet du Programme" (tableau I. L'Entreprise et son Activité) : une formulation courte et
+  // distincte de la phrase complète ci-dessus, pour la case du tableau type "fiche d'identité".
+  const texteObjetProgramme = area ? `Création d'un cabinet de ${config.nom}${area?.nom ? ` à ${area.nom}` : ''}.` : '';
+  // "Profession Actuelle" (tableau Partie II) : déduite de la spécialité choisie, seule donnée
+  // professionnelle du/de la promoteur(trice) que l'app connaît avec certitude.
+  const texteProfessionActuelle = `Médecin — ${config.nom}`;
+  const totalEmplois = effectifs.reduce((somme, e) => somme + (Number(e.qte) || 0), 0);
+
+  // "Local" (Partie III.I) : construite de la même façon, à partir du mode d'occupation et de la
+  // surface déjà saisis dans les Ajustements Généraux — pas de champ libre à inventer ici.
+  // Reformulée en phrase d'intro de "Aménagements et Installations à Réaliser" (l'ancienne section
+  // "Local" autonome a été supprimée, son contenu fusionné en tête de cette section).
+  const texteLocal = `Sur une surface de ${surface} m², en ${typeOccupation === 'achat' ? 'acquisition' : 'location'}${typeOccupation === 'achat' ? ` (prix de référence du marché : ${formatHT(prixM2)} DH/m²)` : ` (loyer de référence du marché : ${formatHT(loyerM2Etat)} DH/m²/mois)`}, les travaux d'aménagement et d'installation suivants seront réalisés :`;
+
+  // Étude Commerciale (Partie IV) : valeurs par défaut générées à partir de données réelles (actes
+  // déjà saisis, profil et concurrence de la zone) — même principe que titrePerso/sousTitrePerso :
+  // l'utilisateur peut les reformuler ou les compléter librement dans le champ éditable qui les
+  // affiche (prestationsTexte/concurrenceTexte, state ci-dessus).
+  const texteProstationsDefaut =
+    listeActes.length > 0
+      ? listeActes.map((a) => `• ${a}`).join('\n')
+      : "Aucune prestation n'a encore été saisie dans le tableau de chiffre d'affaires prévisionnel.";
+  const texteConcurrenceDefaut = sectionsIntroduction
+    ? [sectionsIntroduction.concurrenceLocale, ...paragraphesEtudeEconomiqueAffiches].join('\n\n')
+    : "Données de concurrence non disponibles pour cette zone.";
 
   // --- LOGIQUE D'AJOUT ET MODIFICATION ---
   const handleUpdateAmenagement = (id: number, field: 'nom' | 'prix', value: string | number) => setAmenagements(amenagements.map(a => a.id === id ? { ...a, [field]: value } : a));
@@ -328,6 +434,8 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
     credit: creditSollicite,
     tauxCreditPct: tauxInteretCredit,
     dureeCreditAnnees,
+    dureeDiffereMois,
+    typeDiffere,
     calculerImpot: regimeFiscal === 'IR' ? calculerIR : calculerIS,
   });
   // Lignes de report affichées seulement quand un déficit existe (sinon résultat imposable = résultat avant impôt).
@@ -349,6 +457,17 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
     'Résultat net': Math.round(l.resultatNet),
   }));
 
+  // Cash-Flow (CAF) : ligne classique du CPC, Résultat Net + Dotations aux Amortissements (seule
+  // charge du CPC qui n'est pas décaissée) — pas le solde de trésorerie réel (qui tiendrait compte
+  // en plus du remboursement du capital du crédit, hors CPC ; "Capital du crédit remboursé" reste
+  // affiché séparément juste en dessous pour ce calcul-là).
+  let cashFlowCumule = 0;
+  const cashFlow = projection.map((l) => {
+    const valeur = l.resultatNet + l.dotations;
+    cashFlowCumule += valeur;
+    return { rang: l.rang, valeur, surCA: l.ca > 0 ? valeur / l.ca : 0, cumule: cashFlowCumule };
+  });
+
   return createPortal(
     <div id="bp-print-root" className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 print:p-0 print:static">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm print:hidden" />
@@ -365,23 +484,234 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
 
         {/* CORPS */}
         <div className="flex-1 overflow-y-auto p-6 md:p-10 print:p-0 bg-slate-50">
-          <div className="text-center mb-10 border-b-2 border-slate-900 pb-6">
-            {logo && <img id="bp-logo-affiche" src={logo} alt="Logo" className="mx-auto mb-4 max-h-24 max-w-[260px] object-contain" />}
-            <h1 id="bp-titre-affiche" className="text-3xl font-black uppercase mb-2 tracking-tight">{titreAffiche}</h1>
-            <p id="bp-sous-titre-affiche" className="text-lg font-bold text-blue-700 uppercase">{sousTitrePerso.trim() || `${config.specialiteNom} • ${area.nom}`}</p>
+          {/* PAGE DE GARDE */}
+          <div id="bp-page-garde" className="mb-10 flex flex-col justify-between min-h-[600px] print:min-h-[85vh] text-center" style={{ breakAfter: 'page' }}>
+            <div>
+              <p className="text-xs font-black text-slate-500 uppercase tracking-[0.3em] mb-14">Centralized Finance Consulting</p>
+              {logo && <img id="bp-logo-affiche" src={logo} alt="Logo" className="mx-auto mb-6 max-h-24 max-w-[260px] object-contain" />}
+              <h1 id="bp-titre-affiche" className="text-4xl font-black uppercase mb-3 tracking-tight">{titreAffiche}</h1>
+              <p id="bp-sous-titre-affiche" className="text-lg font-bold text-blue-700 uppercase">{sousTitrePerso.trim() || `${config.specialiteNom} • ${area.nom}`}</p>
+            </div>
+            <div className="text-sm text-slate-600 space-y-2 border-t-2 border-slate-900 pt-6">
+              <p className="font-black text-slate-900">{config.specialiteNom}</p>
+              <AutoTextarea value={adresseCabinet} onChange={(e) => setAdresseCabinet(e.target.value)} placeholder="Adresse du cabinet (à compléter)" rows={1} className="w-full text-center bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500 print:bg-transparent print:border-none print:p-0 placeholder:italic placeholder:text-slate-400" />
+              <AutoTextarea value={identifiantsCabinet} onChange={(e) => setIdentifiantsCabinet(e.target.value)} placeholder="RC, IF, Patente, CNSS... (à compléter)" rows={1} className="w-full text-center bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500 print:bg-transparent print:border-none print:p-0 placeholder:italic placeholder:text-slate-400" />
+              <p className="text-xs text-slate-400 pt-2">{new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}</p>
+            </div>
           </div>
 
-          {/* INTRODUCTION : profil de la zone et comparaison aux autres zones/villes, en texte */}
-          {paragraphesIntroduction.length > 0 && (
-            <div id="bp-introduction" className="mb-10">
-              <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4">Introduction</h3>
-              <div className="space-y-4 text-[13.5px] leading-relaxed text-slate-700">
-                {paragraphesIntroduction.map((paragraphe, i) => (
-                  <p key={i}>{paragraphe}</p>
-                ))}
+          {/* SOMMAIRE */}
+          <div id="bp-sommaire" className="mb-10" style={{ breakAfter: 'page' }}>
+            <h2 className="text-2xl font-black uppercase mb-8 text-center tracking-[0.3em]">Sommaire</h2>
+            <div className="space-y-6 text-sm text-slate-800">
+              <div>
+                <p className="font-black uppercase underline underline-offset-4 mb-2">Présentation du Projet</p>
+                <ol className="space-y-1 pl-1">
+                  <li>I. L'Entreprise et son Activité</li>
+                  <li>
+                    II. Les Objectifs du Projet
+                    <ol className="pl-6 mt-1 space-y-1 list-decimal">
+                      <li>La Nature de l'Activité</li>
+                      <li>L'Emplacement de l'Activité</li>
+                    </ol>
+                  </li>
+                </ol>
+              </div>
+              <div>
+                <p className="font-black uppercase underline underline-offset-4 mb-2">Renseignements sur le/la {titrePromoteur || 'Promoteur(trice)'}</p>
+              </div>
+              <div>
+                <p className="font-black uppercase underline underline-offset-4 mb-2">Moyens d'Exploitation</p>
+                <ol className="space-y-1 pl-1">
+                  <li>I. Aménagements et Installations à Réaliser</li>
+                  <li>II. Matériel à Acquérir</li>
+                  <li>III. Effectif à Recruter</li>
+                </ol>
+              </div>
+              <div>
+                <p className="font-black uppercase underline underline-offset-4 mb-2">Étude Commerciale</p>
+                <ol className="pl-6 space-y-1 list-decimal">
+                  <li>Les Prestations à Offrir</li>
+                  <li>La Clientèle</li>
+                  <li>La Concurrence</li>
+                </ol>
+              </div>
+              <div>
+                <p className="font-black uppercase underline underline-offset-4 mb-2">Étude Financière</p>
+                <ol className="space-y-1 pl-1">
+                  <li>I. Détail du Programme d'Investissement</li>
+                  <li>II. Plan de Financement Envisagé</li>
+                  <li>III. Exploitation Prévisionnelle détaillée : CA et Charges d'exploitation</li>
+                </ol>
+              </div>
+              <div>
+                <p className="font-black uppercase underline underline-offset-4">Tableau d'Exploitation Prévisionnelle</p>
               </div>
             </div>
-          )}
+          </div>
+
+          {/* PARTIE I — PRÉSENTATION DU PROJET */}
+          <div id="bp-partie-1" className="mb-10" style={{ breakBefore: 'page' }}>
+            <h2 className="text-2xl font-black uppercase mb-6 text-slate-900 border-b-2 border-slate-900 pb-3">I. Présentation du Projet</h2>
+
+            <div className="mb-8">
+              <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4">I. L'Entreprise et son Activité</h3>
+              <table className="w-full text-xs border-collapse border border-slate-300 bg-white">
+                <tbody>
+                  <tr>
+                    <td className="border p-3 font-black uppercase text-slate-700 w-1/3 align-top">Dénomination Sociale</td>
+                    <td className="border p-2"><input type="text" value={denominationSociale} onChange={(e) => setDenominationSociale(e.target.value)} placeholder="À compléter" className="w-full bg-transparent p-1 outline-none text-slate-700 print:border-none placeholder:italic placeholder:text-slate-400" /></td>
+                  </tr>
+                  <tr>
+                    <td className="border p-3 font-black uppercase text-slate-700 align-top">Forme Juridique</td>
+                    <td className="border p-2"><input type="text" value={formeJuridique} onChange={(e) => setFormeJuridique(e.target.value)} placeholder="À compléter" className="w-full bg-transparent p-1 outline-none text-slate-700 print:border-none placeholder:italic placeholder:text-slate-400" /></td>
+                  </tr>
+                  <tr>
+                    <td className="border p-3 font-black uppercase text-slate-700 align-top">Activité de l'Entreprise</td>
+                    <td className="border p-2"><AutoTextarea value={activiteEntrepriseTexte || config.specialiteNom} onChange={(e) => setActiviteEntrepriseTexte(e.target.value)} rows={1} className="w-full bg-transparent p-1 outline-none text-slate-700 print:border-none" /></td>
+                  </tr>
+                  <tr>
+                    <td className="border p-3 font-black uppercase text-slate-700 align-top">Siège Social</td>
+                    <td className="border p-2"><AutoTextarea value={adresseCabinet} onChange={(e) => setAdresseCabinet(e.target.value)} placeholder="Adresse du cabinet (à compléter)" rows={1} className="w-full bg-transparent p-1 outline-none text-slate-700 print:border-none placeholder:italic placeholder:text-slate-400" /></td>
+                  </tr>
+                  <tr>
+                    <td className="border p-3 font-black uppercase text-slate-700 align-top">{titrePromoteur} du Projet</td>
+                    <td className="border p-2"><input type="text" value={promoteurNom} onChange={(e) => setPromoteurNom(e.target.value)} placeholder="À compléter" className="w-full bg-transparent p-1 outline-none text-slate-700 print:border-none placeholder:italic placeholder:text-slate-400" /></td>
+                  </tr>
+                  <tr>
+                    <td className="border p-3 font-black uppercase text-slate-700 align-top">Objet du Programme</td>
+                    <td className="border p-2"><AutoTextarea value={objetProgrammeTexte || texteObjetProgramme} onChange={(e) => setObjetProgrammeTexte(e.target.value)} rows={1} className="w-full bg-transparent p-1 outline-none text-slate-700 print:border-none" /></td>
+                  </tr>
+                  <tr>
+                    <td className="border p-3 font-black uppercase text-slate-700 align-top">Emplois à Créer</td>
+                    <td className="border p-3 text-slate-700">{totalEmplois} poste{totalEmplois > 1 ? 's' : ''}</td>
+                  </tr>
+                  <tr>
+                    <td className="border p-3 font-black uppercase text-slate-700 align-top">Coût du Programme d'Investissement</td>
+                    <td className="border p-3 text-slate-700 font-bold">{formatHT(totalInvestissement)} DH</td>
+                  </tr>
+                  <tr>
+                    <td className="border p-3 font-black uppercase text-slate-700 align-top">Montant du Crédit Sollicité</td>
+                    <td className="border p-3 text-slate-700 font-bold">{formatHT(creditSollicite)} DH</td>
+                  </tr>
+                  <tr>
+                    <td className="border p-3 font-black uppercase text-slate-700 align-top">Durée Sollicitée</td>
+                    <td className="border p-3 text-slate-700">{dureeCreditAnnees} ans</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mb-8">
+              <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4">II. Les Objectifs du Projet</h3>
+              <div className="space-y-6">
+                <div>
+                  <h4 className="text-sm font-black uppercase text-slate-600 mb-2">1. La Nature de l'Activité</h4>
+                  <AutoTextarea value={natureActiviteTexte || texteNatureActivite} onChange={(e) => setNatureActiviteTexte(e.target.value)} rows={2} className="w-full text-[13.5px] leading-relaxed text-slate-700 bg-slate-50 border border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 print:bg-transparent print:border-none print:p-0" />
+                </div>
+                {sectionsIntroduction && (
+                  <div id="bp-introduction">
+                    <h4 className="text-sm font-black uppercase text-slate-600 mb-2">2. L'Emplacement de l'Activité</h4>
+                    <AutoTextarea value={emplacementTexte || sectionsIntroduction.profilEconomique} onChange={(e) => setEmplacementTexte(e.target.value)} rows={2} className="w-full text-[13.5px] leading-relaxed text-slate-700 bg-slate-50 border border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 print:bg-transparent print:border-none print:p-0" />
+                    <p className="mt-2 text-[10px] text-slate-400 italic">Données démographiques sourcées du Haut-Commissariat au Plan (HCP).</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* PARTIE II — RENSEIGNEMENTS SUR LE/LA PROMOTEUR(TRICE) */}
+          <div id="bp-partie-2" className="mb-10" style={{ breakBefore: 'page' }}>
+            <h2 className="text-2xl font-black uppercase mb-6 text-slate-900 border-b-2 border-slate-900 pb-3 flex flex-wrap items-center gap-2">
+              II. Renseignements sur le/la
+              <input type="text" value={titrePromoteur} onChange={(e) => setTitrePromoteur(e.target.value)} className="inline-block w-auto min-w-[180px] bg-transparent border-b-2 border-dashed border-blue-400 outline-none px-1 font-black uppercase print:border-none" />
+            </h2>
+            <table className="w-full text-xs border-collapse border border-slate-300 bg-white">
+              <tbody>
+                <tr>
+                  <td className="border p-3 font-black uppercase text-slate-700 w-1/3 align-top">Nom et Prénom</td>
+                  <td className="border p-2"><input type="text" value={promoteurNom} onChange={(e) => setPromoteurNom(e.target.value)} placeholder="À compléter" className="w-full bg-transparent p-1 outline-none text-slate-700 print:border-none placeholder:italic placeholder:text-slate-400" /></td>
+                </tr>
+                <tr>
+                  <td className="border p-3 font-black uppercase text-slate-700 align-top">Adresse</td>
+                  <td className="border p-2"><AutoTextarea value={adressePromoteur} onChange={(e) => setAdressePromoteur(e.target.value)} placeholder="À compléter" rows={1} className="w-full bg-transparent p-1 outline-none text-slate-700 print:border-none placeholder:italic placeholder:text-slate-400" /></td>
+                </tr>
+                <tr>
+                  <td className="border p-3 font-black uppercase text-slate-700 align-top">Profession Actuelle</td>
+                  <td className="border p-2"><AutoTextarea value={professionActuelleTexte || texteProfessionActuelle} onChange={(e) => setProfessionActuelleTexte(e.target.value)} rows={1} className="w-full bg-transparent p-1 outline-none text-slate-700 print:border-none" /></td>
+                </tr>
+                <tr>
+                  <td className="border p-3 font-black uppercase text-slate-700 align-top">Diplômes Obtenus</td>
+                  <td className="border p-2"><AutoTextarea value={diplomesObtenus} onChange={(e) => setDiplomesObtenus(e.target.value)} placeholder="À compléter : diplômes, spécialisations, année d'obtention." rows={3} className="w-full bg-transparent p-1 outline-none text-slate-700 print:border-none placeholder:italic placeholder:text-slate-400" /></td>
+                </tr>
+                <tr>
+                  <td className="border p-3 font-black uppercase text-slate-700 align-top">Expérience Professionnelle</td>
+                  <td className="border p-2"><AutoTextarea value={experienceProfessionnelle} onChange={(e) => setExperienceProfessionnelle(e.target.value)} placeholder="À compléter : parcours et expérience professionnelle." rows={3} className="w-full bg-transparent p-1 outline-none text-slate-700 print:border-none placeholder:italic placeholder:text-slate-400" /></td>
+                </tr>
+                <tr>
+                  <td className="border p-3 font-black uppercase text-slate-700 align-top">Relations Bancaires</td>
+                  <td className="border p-2"><AutoTextarea value={relationsBancaires} onChange={(e) => setRelationsBancaires(e.target.value)} placeholder="À compléter : banque(s), nature de la relation." rows={2} className="w-full bg-transparent p-1 outline-none text-slate-700 print:border-none placeholder:italic placeholder:text-slate-400" /></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* PARTIE III — MOYENS D'EXPLOITATION */}
+          <div id="bp-partie-3-titre" className="mb-10" style={{ breakBefore: 'page' }}>
+            <h2 className="text-2xl font-black uppercase mb-6 text-slate-900 border-b-2 border-slate-900 pb-3">III. Moyens d'Exploitation</h2>
+
+            {/* AMÉNAGEMENTS (avec l'ancien "Local" fusionné en intro) */}
+            <div className="mb-10">
+              <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">I. Aménagements et Installations à Réaliser<span className="text-[10px] font-normal text-slate-500 uppercase print:hidden">Édition activée</span></h3>
+              <AutoTextarea value={localTexte || texteLocal} onChange={(e) => setLocalTexte(e.target.value)} rows={2} className="w-full mb-3 text-[13.5px] leading-relaxed text-slate-700 bg-slate-50 border border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 print:bg-transparent print:border-none print:p-0" />
+              <table className="w-full text-xs border-collapse border border-slate-300 bg-white">
+                <thead><tr className="bg-slate-100"><th className="border border-slate-300 p-2 text-left">Désignation</th><th className="border border-slate-300 p-2 text-right w-24">Prix (DH)</th><th className="border border-slate-300 p-2 w-8 print:hidden"></th></tr></thead>
+                <tbody>
+                  {amenagements.map(a => (
+                    <tr key={a.id} className="hover:bg-slate-50">
+                      <td className="border border-slate-300 p-2"><input type="text" value={a.nom} onChange={(e) => handleUpdateAmenagement(a.id, 'nom', e.target.value)} className="w-full bg-transparent font-medium outline-none print:border-none" /></td>
+                      <td className="border border-slate-300 p-2"><input type="number" value={a.prix} onChange={(e) => handleUpdateAmenagement(a.id, 'prix', parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-right font-bold text-slate-800 outline-none print:border-none appearance-none" /></td>
+                      <td className="border border-slate-300 p-1 text-center print:hidden"><button onClick={() => handleRemoveAmenagement(a.id)} className="text-rose-500"><Trash2 className="h-4 w-4 mx-auto" /></button></td>
+                    </tr>
+                  ))}
+                  <tr className="print:hidden bg-blue-50/30">
+                    <td className="border border-slate-300 p-1"><input type="text" placeholder="Ajouter un aménagement..." value={newAmenagementNom} onChange={(e) => setNewAmenagementNom(e.target.value)} className="w-full p-1 text-xs" /></td>
+                    <td className="border border-slate-300 p-1"><input type="number" placeholder="Prix" value={newAmenagementPrix} onChange={(e) => setNewAmenagementPrix(e.target.value)} className="w-full p-1 text-xs text-right" /></td>
+                    <td className="border border-slate-300 p-1 text-center"><button onClick={handleAddAmenagement} className="bg-blue-600 text-white p-1.5 rounded"><Plus className="h-3 w-3 mx-auto" /></button></td>
+                  </tr>
+                  {surface !== surfaceInitiale && (
+                    <tr className="bg-blue-50/50"><td className="border border-slate-300 p-2 text-blue-700 font-medium">Ajustement surface ({surface} m² vs {surfaceInitiale} m² référence)</td><td className="border border-slate-300 p-2 text-right font-bold text-blue-700">{formatHT(surcoutSurfaceHT)}</td><td className="border border-slate-300 print:hidden"></td></tr>
+                  )}
+                  <tr className="bg-slate-900 text-white"><td className="border border-slate-900 p-2 text-right font-black">PT TTC Aménagement :</td><td className="border border-slate-900 p-2 text-right font-black text-sm" colSpan={2}>{formatHT(totalAmenagementTTC)}</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* MATÉRIEL MÉDICAL MODIFIABLE */}
+            <div className="mb-0 page-break-inside-avoid">
+              <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">II. Matériel à Acquérir<span className="flex items-center gap-3 print:hidden"><span className="text-[10px] font-normal text-slate-500 uppercase">Prix saisis</span><span className="inline-flex rounded-lg border border-slate-300 overflow-hidden text-[11px] font-black"><button type="button" id="bp-equip-ht" aria-pressed={!equipementTTC} onClick={() => setEquipementTTC(false)} className={`px-3 py-1.5 ${!equipementTTC ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Hors taxe</button><button type="button" id="bp-equip-ttc" aria-pressed={equipementTTC} onClick={() => setEquipementTTC(true)} className={`px-3 py-1.5 ${equipementTTC ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>TTC (TVA 20 %)</button></span></span></h3>
+              <table className="w-full text-xs border-collapse border border-slate-300 bg-white">
+                <thead><tr className="bg-slate-100"><th className="border p-3 text-left">Équipement</th><th className="border p-3 text-right w-40">{equipementTTC ? 'Montant TTC (DH)' : 'Montant HT (DH)'}</th><th className="border p-3 w-12 print:hidden">X</th></tr></thead>
+                <tbody>
+                  {machines.map(m => (
+                    <tr key={m.id} className="hover:bg-slate-50">
+                      <td className="border p-2"><input type="text" value={m.nom} onChange={(e) => handleUpdateMachine(m.id, 'nom', e.target.value)} className="w-full bg-transparent font-medium text-slate-800 outline-none print:border-none" /></td>
+                      <td className="border p-2"><input type="number" value={arrondi2(equipementTTC ? m.prix * (1 + TVA_MATERIEL) : m.prix)} onChange={(e) => { const saisi = parseFloat(e.target.value) || 0; handleUpdateMachine(m.id, 'prix', equipementTTC ? saisi / (1 + TVA_MATERIEL) : saisi); }} className="w-full bg-transparent text-right font-bold outline-none print:border-none appearance-none" /></td>
+                      <td className="border p-2 text-center print:hidden"><button onClick={() => handleRemoveMachine(m.id)} className="text-rose-500"><Trash2 className="h-4 w-4 mx-auto" /></button></td>
+                    </tr>
+                  ))}
+                  <tr className="print:hidden bg-blue-50/30">
+                    <td className="border p-2"><input type="text" placeholder="Ajouter une machine..." value={newMachineNom} onChange={(e) => setNewMachineNom(e.target.value)} className="w-full border p-2 text-xs rounded" /></td>
+                    <td className="border p-2"><input type="number" placeholder={equipementTTC ? 'Prix TTC' : 'Prix HT'} value={newMachinePrix} onChange={(e) => setNewMachinePrix(e.target.value)} className="w-full border p-2 text-xs text-right rounded" /></td>
+                    <td className="border p-2 text-center"><button onClick={handleAddMachine} className="bg-blue-600 text-white p-2 rounded w-full"><Plus className="h-4 w-4 mx-auto" /></button></td>
+                  </tr>
+                  <tr className="bg-slate-100"><td className="border p-3 text-right font-bold text-slate-700">Total HT :</td><td className="border p-3 text-right font-bold text-slate-700" colSpan={2}>{formatHT(totalMaterielHT)}</td></tr>
+                  <tr className="bg-slate-100"><td className="border p-3 text-right font-bold text-slate-700">TVA (20 %) :</td><td className="border p-3 text-right font-bold text-slate-700" colSpan={2}>{formatHT(tvaMateriel)}</td></tr>
+                  <tr className="bg-slate-900 text-white"><td className="border p-3 text-right font-black">PT TTC (TVA 20%) :</td><td className="border p-3 text-right font-black text-lg" colSpan={2}>{formatHT(totalMaterielTTC)}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
 
           {/* PERSONNALISATION DU DOCUMENT (titre, sous-titre, logo) */}
           <div className="mb-10 p-5 bg-white rounded-2xl border border-slate-200 shadow-sm print:hidden" id="bp-personnalisation">
@@ -474,87 +804,225 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
               <p className="mt-3 text-[10px] text-slate-400 italic">Jours travaillés en année pleine : {joursAnneePleine}. Les mois grisés précèdent le démarrage : ils ne comptent pas en {anneeDemarrage} mais reviennent dans les années suivantes.</p>
             </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-10 mb-10">
-            {/* AMÉNAGEMENTS */}
-            <div>
-              <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">I. Aménagements<span className="text-[10px] font-normal text-slate-500 uppercase print:hidden">Édition activée</span></h3>
-              <table className="w-full text-xs border-collapse border border-slate-300 bg-white">
-                <thead><tr className="bg-slate-100"><th className="border border-slate-300 p-2 text-left">Désignation</th><th className="border border-slate-300 p-2 text-right w-24">Prix (DH)</th><th className="border border-slate-300 p-2 w-8 print:hidden"></th></tr></thead>
-                <tbody>
-                  {amenagements.map(a => (
-                    <tr key={a.id} className="hover:bg-slate-50">
-                      <td className="border border-slate-300 p-2"><input type="text" value={a.nom} onChange={(e) => handleUpdateAmenagement(a.id, 'nom', e.target.value)} className="w-full bg-transparent font-medium outline-none print:border-none" /></td>
-                      <td className="border border-slate-300 p-2"><input type="number" value={a.prix} onChange={(e) => handleUpdateAmenagement(a.id, 'prix', parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-right font-bold text-slate-800 outline-none print:border-none appearance-none" /></td>
-                      <td className="border border-slate-300 p-1 text-center print:hidden"><button onClick={() => handleRemoveAmenagement(a.id)} className="text-rose-500"><Trash2 className="h-4 w-4 mx-auto" /></button></td>
-                    </tr>
-                  ))}
-                  <tr className="print:hidden bg-blue-50/30">
-                    <td className="border border-slate-300 p-1"><input type="text" placeholder="Ajouter un aménagement..." value={newAmenagementNom} onChange={(e) => setNewAmenagementNom(e.target.value)} className="w-full p-1 text-xs" /></td>
-                    <td className="border border-slate-300 p-1"><input type="number" placeholder="Prix" value={newAmenagementPrix} onChange={(e) => setNewAmenagementPrix(e.target.value)} className="w-full p-1 text-xs text-right" /></td>
-                    <td className="border border-slate-300 p-1 text-center"><button onClick={handleAddAmenagement} className="bg-blue-600 text-white p-1.5 rounded"><Plus className="h-3 w-3 mx-auto" /></button></td>
-                  </tr>
-                  {surface !== surfaceInitiale && (
-                    <tr className="bg-blue-50/50"><td className="border border-slate-300 p-2 text-blue-700 font-medium">Ajustement surface ({surface} m² vs {surfaceInitiale} m² référence)</td><td className="border border-slate-300 p-2 text-right font-bold text-blue-700">{formatHT(surcoutSurfaceHT)}</td><td className="border border-slate-300 print:hidden"></td></tr>
-                  )}
-                  <tr className="bg-slate-900 text-white"><td className="border border-slate-900 p-2 text-right font-black">PT TTC Aménagement :</td><td className="border border-slate-900 p-2 text-right font-black text-sm" colSpan={2}>{formatHT(totalAmenagementTTC)}</td></tr>
-                </tbody>
-              </table>
+          {/* HYPOTHÈSES (régime fiscal, amortissements, crédit) — pilotent le CPC (Partie VI) et
+              l'échéancier du crédit (Partie V) : regroupées ici avec les autres panneaux de saisie. */}
+          <div className="mb-10 p-5 bg-white rounded-2xl border border-slate-200 shadow-sm print:hidden">
+            <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-4 flex items-center gap-2"><Calculator className="h-5 w-5 text-blue-600" /> Hypothèses (régime fiscal, amortissements, crédit)</h3>
+            <div className="flex flex-wrap items-end gap-6">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Régime fiscal</label>
+                <select value={regimeFiscal} onChange={(e) => setRegimeFiscal(e.target.value as 'IR' | 'IS')} className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                  <option value="IR">IR — barème progressif (profession libérale, RNR)</option>
+                  <option value="IS">IS — 20 % (société)</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Amort. Aménagements (%/an)</label>
+                <input type="number" step="0.5" value={tauxAmortAmenagements} onChange={(e) => setTauxAmortAmenagements(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Amort. Matériel (%/an)</label>
+                <input type="number" step="0.5" value={tauxAmortMateriel} onChange={(e) => setTauxAmortMateriel(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label htmlFor="bp-croissance-ca" className="text-[10px] font-bold text-slate-500 uppercase">Croissance CA (%/an)</label>
+                <input id="bp-croissance-ca" type="number" step="0.5" value={croissanceCAPct} onChange={(e) => setCroissanceCAPct(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label htmlFor="bp-croissance-charges" className="text-[10px] font-bold text-slate-500 uppercase">Hausse des charges (%/an)</label>
+                <input id="bp-croissance-charges" type="number" step="0.5" value={croissanceChargesPct} onChange={(e) => setCroissanceChargesPct(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Taux crédit (%/an)</label>
+                <input type="number" step="0.05" value={tauxInteretCredit} onChange={(e) => setTauxInteretCredit(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Durée crédit (ans)</label>
+                <input type="number" value={dureeCreditAnnees} onChange={(e) => setDureeCreditAnnees(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Différé de remboursement</label>
+                <select value={typeDiffere} onChange={(e) => setTypeDiffere(e.target.value as TypeDiffere)} className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                  <option value="aucun">Aucun différé</option>
+                  <option value="capital">Différé capital (intérêts seuls payés)</option>
+                  <option value="interet">Différé intérêt (capital seul payé)</option>
+                  <option value="interetCapital">Différé intérêt & capital (rien payé)</option>
+                </select>
+              </div>
+              {typeDiffere !== 'aucun' && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Durée du différé (mois)</label>
+                  <input type="number" min={0} max={Math.max(0, dureeCreditAnnees * 12 - 1)} value={dureeDiffereMois} onChange={(e) => setDureeDiffereMois(Math.max(0, parseFloat(e.target.value) || 0))} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              )}
             </div>
-
-            {/* EFFECTIFS */}
-            <div>
-              <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">II. Effectifs<span className="text-[10px] font-normal text-slate-500 uppercase print:hidden">Édition activée</span></h3>
-              <table className="w-full text-xs border-collapse border border-slate-300 bg-white">
-                <thead><tr className="bg-slate-100"><th className="border p-2 text-left">Poste</th><th className="border p-2 text-center w-12">Qté</th><th className="border p-2 text-right w-24">Salaire</th><th className="border p-2 w-8 print:hidden"></th></tr></thead>
-                <tbody>
-                  {effectifs.map(e => (
-                    <tr key={e.id} className="hover:bg-slate-50">
-                      <td className="border p-2"><input type="text" value={e.nom} onChange={(evt) => handleUpdateEffectif(e.id, 'nom', evt.target.value)} className="w-full bg-transparent font-medium outline-none print:border-none" /></td>
-                      <td className="border p-2"><input type="number" value={e.qte} onChange={(evt) => handleUpdateEffectif(e.id, 'qte', parseFloat(evt.target.value) || 0)} className="w-full text-center font-bold outline-none print:border-none" /></td>
-                      <td className="border p-2"><input type="number" value={e.salaire} onChange={(evt) => handleUpdateEffectif(e.id, 'salaire', parseFloat(evt.target.value) || 0)} className="w-full text-right font-bold outline-none print:border-none" /></td>
-                      <td className="border p-1 text-center print:hidden"><button onClick={() => handleRemoveEffectif(e.id)} className="text-rose-500"><Trash2 className="h-4 w-4 mx-auto" /></button></td>
-                    </tr>
-                  ))}
-                  <tr className="print:hidden bg-blue-50/30">
-                    <td className="border border-slate-300 p-1"><input type="text" placeholder="Ajouter un poste..." value={newEffectifNom} onChange={(e) => setNewEffectifNom(e.target.value)} className="w-full p-1 text-xs" /></td>
-                    <td className="border border-slate-300 p-1"><input type="number" placeholder="Qté" value={newEffectifQte} onChange={(e) => setNewEffectifQte(e.target.value)} className="w-full p-1 text-xs text-center" /></td>
-                    <td className="border border-slate-300 p-1"><input type="number" placeholder="Salaire" value={newEffectifSalaire} onChange={(e) => setNewEffectifSalaire(e.target.value)} className="w-full p-1 text-xs text-right" /></td>
-                    <td className="border border-slate-300 p-1 text-center"><button onClick={handleAddEffectif} className="bg-blue-600 text-white p-1.5 rounded"><Plus className="h-3 w-3 mx-auto" /></button></td>
-                  </tr>
-                  <tr className="bg-slate-100"><td colSpan={2} className="border p-2 font-black text-right">Provision Mensuelle :</td><td className="border p-2 text-right font-black text-blue-700" colSpan={2}>{formatHT(masseSalariale)} DH</td></tr>
-                </tbody>
-              </table>
-            </div>
+            <p className="mt-3 text-[10px] text-slate-400 italic">
+              Valeurs pré-remplies ci-dessus, modifiables librement — sources : amort. aménagements 10 %/an (taux CGI usuel) ; amort. matériel 15 %/an (catégorie générale CGI "matériel et outillage", 10-20 % admis — à confirmer avec un expert-comptable, aucun taux spécifique publié pour le matériel médical) ; taux crédit 4,65 % (taux débiteur moyen réel du crédit équipement, enquête Bank Al-Maghrib T2 2026, remplacez par le taux de votre banque si différent). Régime IR = barème progressif marocain 2026 ; régime IS = 20 % (+ CSS au-delà de 1M DH de bénéfice).
+            </p>
           </div>
 
-          {/* MATÉRIEL MÉDICAL MODIFIABLE */}
-          <div className="mb-12 page-break-inside-avoid">
-            <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">III. Équipement & Spécialités<span className="flex items-center gap-3 print:hidden"><span className="text-[10px] font-normal text-slate-500 uppercase">Prix saisis</span><span className="inline-flex rounded-lg border border-slate-300 overflow-hidden text-[11px] font-black"><button type="button" id="bp-equip-ht" aria-pressed={!equipementTTC} onClick={() => setEquipementTTC(false)} className={`px-3 py-1.5 ${!equipementTTC ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Hors taxe</button><button type="button" id="bp-equip-ttc" aria-pressed={equipementTTC} onClick={() => setEquipementTTC(true)} className={`px-3 py-1.5 ${equipementTTC ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>TTC (TVA 20 %)</button></span></span></h3>
+          {/* EFFECTIFS */}
+          <div className="mb-10">
+            <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">III. Effectif à Recruter<span className="text-[10px] font-normal text-slate-500 uppercase print:hidden">Édition activée</span></h3>
             <table className="w-full text-xs border-collapse border border-slate-300 bg-white">
-              <thead><tr className="bg-slate-100"><th className="border p-3 text-left">Équipement</th><th className="border p-3 text-right w-40">{equipementTTC ? 'Montant TTC (DH)' : 'Montant HT (DH)'}</th><th className="border p-3 w-12 print:hidden">X</th></tr></thead>
+              <thead><tr className="bg-slate-100"><th className="border p-2 text-left">Poste</th><th className="border p-2 text-center w-12">Qté</th><th className="border p-2 text-right w-24">Salaire</th><th className="border p-2 w-8 print:hidden"></th></tr></thead>
               <tbody>
-                {machines.map(m => (
-                  <tr key={m.id} className="hover:bg-slate-50">
-                    <td className="border p-2"><input type="text" value={m.nom} onChange={(e) => handleUpdateMachine(m.id, 'nom', e.target.value)} className="w-full bg-transparent font-medium text-slate-800 outline-none print:border-none" /></td>
-                    <td className="border p-2"><input type="number" value={arrondi2(equipementTTC ? m.prix * (1 + TVA_MATERIEL) : m.prix)} onChange={(e) => { const saisi = parseFloat(e.target.value) || 0; handleUpdateMachine(m.id, 'prix', equipementTTC ? saisi / (1 + TVA_MATERIEL) : saisi); }} className="w-full bg-transparent text-right font-bold outline-none print:border-none appearance-none" /></td>
-                    <td className="border p-2 text-center print:hidden"><button onClick={() => handleRemoveMachine(m.id)} className="text-rose-500"><Trash2 className="h-4 w-4 mx-auto" /></button></td>
+                {effectifs.map(e => (
+                  <tr key={e.id} className="hover:bg-slate-50">
+                    <td className="border p-2"><input type="text" value={e.nom} onChange={(evt) => handleUpdateEffectif(e.id, 'nom', evt.target.value)} className="w-full bg-transparent font-medium outline-none print:border-none" /></td>
+                    <td className="border p-2"><input type="number" value={e.qte} onChange={(evt) => handleUpdateEffectif(e.id, 'qte', parseFloat(evt.target.value) || 0)} className="w-full text-center font-bold outline-none print:border-none" /></td>
+                    <td className="border p-2"><input type="number" value={e.salaire} onChange={(evt) => handleUpdateEffectif(e.id, 'salaire', parseFloat(evt.target.value) || 0)} className="w-full text-right font-bold outline-none print:border-none" /></td>
+                    <td className="border p-1 text-center print:hidden"><button onClick={() => handleRemoveEffectif(e.id)} className="text-rose-500"><Trash2 className="h-4 w-4 mx-auto" /></button></td>
                   </tr>
                 ))}
                 <tr className="print:hidden bg-blue-50/30">
-                  <td className="border p-2"><input type="text" placeholder="Ajouter une machine..." value={newMachineNom} onChange={(e) => setNewMachineNom(e.target.value)} className="w-full border p-2 text-xs rounded" /></td>
-                  <td className="border p-2"><input type="number" placeholder={equipementTTC ? 'Prix TTC' : 'Prix HT'} value={newMachinePrix} onChange={(e) => setNewMachinePrix(e.target.value)} className="w-full border p-2 text-xs text-right rounded" /></td>
-                  <td className="border p-2 text-center"><button onClick={handleAddMachine} className="bg-blue-600 text-white p-2 rounded w-full"><Plus className="h-4 w-4 mx-auto" /></button></td>
+                  <td className="border border-slate-300 p-1"><input type="text" placeholder="Ajouter un poste..." value={newEffectifNom} onChange={(e) => setNewEffectifNom(e.target.value)} className="w-full p-1 text-xs" /></td>
+                  <td className="border border-slate-300 p-1"><input type="number" placeholder="Qté" value={newEffectifQte} onChange={(e) => setNewEffectifQte(e.target.value)} className="w-full p-1 text-xs text-center" /></td>
+                  <td className="border border-slate-300 p-1"><input type="number" placeholder="Salaire" value={newEffectifSalaire} onChange={(e) => setNewEffectifSalaire(e.target.value)} className="w-full p-1 text-xs text-right" /></td>
+                  <td className="border border-slate-300 p-1 text-center"><button onClick={handleAddEffectif} className="bg-blue-600 text-white p-1.5 rounded"><Plus className="h-3 w-3 mx-auto" /></button></td>
                 </tr>
-                <tr className="bg-slate-100"><td className="border p-3 text-right font-bold text-slate-700">Total HT :</td><td className="border p-3 text-right font-bold text-slate-700" colSpan={2}>{formatHT(totalMaterielHT)}</td></tr>
-                <tr className="bg-slate-100"><td className="border p-3 text-right font-bold text-slate-700">TVA (20 %) :</td><td className="border p-3 text-right font-bold text-slate-700" colSpan={2}>{formatHT(tvaMateriel)}</td></tr>
-                <tr className="bg-slate-900 text-white"><td className="border p-3 text-right font-black">PT TTC (TVA 20%) :</td><td className="border p-3 text-right font-black text-lg" colSpan={2}>{formatHT(totalMaterielTTC)}</td></tr>
+                <tr className="bg-slate-100"><td colSpan={2} className="border p-2 font-black text-right">Provision Mensuelle :</td><td className="border p-2 text-right font-black text-blue-700" colSpan={2}>{formatHT(masseSalariale)} DH</td></tr>
               </tbody>
             </table>
           </div>
 
+          {/* PARTIE IV — ÉTUDE COMMERCIALE */}
+          <div id="bp-partie-4" className="mb-10" style={{ breakBefore: 'page' }}>
+            <h2 className="text-2xl font-black uppercase mb-6 text-slate-900 border-b-2 border-slate-900 pb-3">IV. Étude Commerciale</h2>
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-sm font-black uppercase text-slate-600 mb-2">1. Les Prestations à Offrir</h4>
+                <AutoTextarea value={prestationsTexte || texteProstationsDefaut} onChange={(e) => setPrestationsTexte(e.target.value)} rows={Math.max(3, listeActes.length)} className="w-full text-[13.5px] leading-relaxed text-slate-700 bg-slate-50 border border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 print:bg-transparent print:border-none print:p-0 whitespace-pre-line" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black uppercase text-slate-600 mb-2">2. La Clientèle</h4>
+                <AutoTextarea value={clienteleTexte || config.clienteleType || ''} onChange={(e) => setClienteleTexte(e.target.value)} placeholder="À compléter : profil et origine géographique de la clientèle visée." rows={3} className="w-full text-[13.5px] leading-relaxed text-slate-700 bg-slate-50 border border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 print:bg-transparent print:border-none print:p-0 placeholder:italic placeholder:text-slate-400" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black uppercase text-slate-600 mb-2">3. La Concurrence</h4>
+                <AutoTextarea value={concurrenceTexte || texteConcurrenceDefaut} onChange={(e) => setConcurrenceTexte(e.target.value)} rows={4} className="w-full text-[13.5px] leading-relaxed text-slate-700 bg-slate-50 border border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 print:bg-transparent print:border-none print:p-0 whitespace-pre-line" />
+              </div>
+            </div>
+          </div>
+
+          {/* PARTIE V — ÉTUDE FINANCIÈRE */}
+          <div id="bp-partie-5-titre" className="mb-6" style={{ breakBefore: 'page' }}>
+            <h2 className="text-2xl font-black uppercase mb-6 text-slate-900 border-b-2 border-slate-900 pb-3">V. Étude Financière</h2>
+          </div>
+
+          {/* PROGRAMME D'INVESTISSEMENT */}
+          <div className="page-break-inside-avoid mb-10">
+            <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">I. Détail du Programme d'Investissement<span className="text-[10px] font-normal text-slate-500 uppercase print:hidden">Édition activée</span></h3>
+            <table className="w-full text-xs border-collapse bg-white shadow-sm">
+              <thead><tr><th className="border bg-slate-50 p-3 text-left font-black" colSpan={2}>Investissement (TTC)</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td className="border p-3 font-medium">Frais Préliminaires</td>
+                  <td className="border p-1 text-right">
+                    <input type="number" value={fraisPreliminaires} onChange={(e) => setFraisPreliminaires(parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-right font-black p-2 outline-none print:border-none appearance-none" />
+                  </td>
+                </tr>
+                <tr className="bg-blue-50/40">
+                  <td className="border p-3 font-bold text-blue-900">{typeOccupation === 'achat' ? `Achat du Local (${surface}m²)` : `Frais d'installation (${surface}m² - Caution+Agence)`}</td>
+                  <td className="border p-1 text-right">
+                    <input
+                      type="number"
+                      value={Math.round(investissementFoncier)}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        // Repasse par prixM2/loyerM2Etat plutôt qu'un état séparé, pour que ce
+                        // montant reste toujours cohérent avec le champ "Prix au m²" des
+                        // Ajustements Généraux (les deux modifient la même donnée sous-jacente).
+                        if (typeOccupation === 'achat') setPrixM2(surface > 0 ? Math.round(val / surface) : 0);
+                        else setLoyerM2Etat(surface > 0 ? Math.round(val / (surface * 4)) : 0);
+                      }}
+                      className="w-full bg-transparent text-right font-black text-blue-700 p-2 outline-none print:border-none appearance-none"
+                    />
+                  </td>
+                </tr>
+                <tr><td className="border p-3 font-medium">Aménagements et Installations</td><td className="border p-3 text-right font-black">{formatHT(totalAmenagementTTC)}</td></tr>
+                <tr><td className="border p-3 font-medium">Matériels & Équipements Lasers</td><td className="border p-3 text-right font-black">{formatHT(totalMaterielTTC)}</td></tr>
+                <tr>
+                  <td className="border p-3 font-medium">Fonds de Roulement (Produits HN)</td>
+                  <td className="border p-1 text-right">
+                    <input type="number" value={bfr} onChange={(e) => setBfr(parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-right font-black p-2 outline-none print:border-none appearance-none" />
+                  </td>
+                </tr>
+                <tr><td className="border p-3 font-medium">Masse Salariale (1er mois)</td><td className="border p-3 text-right font-black">{formatHT(masseSalariale)}</td></tr>
+                <tr className="bg-slate-900 text-white"><td className="border p-4 font-black uppercase">Total Investissement</td><td className="border p-4 text-right font-black text-lg">{formatHT(totalInvestissement)}</td></tr>
+              </tbody>
+            </table>
+            <p className="mt-2 text-[10px] text-slate-400 italic print:hidden">
+              "Aménagements", "Matériels" et "Masse Salariale" ne sont pas des cases à remplir : ce sont les totaux des tableaux I (Aménagements), II (Matériel) et III (Effectif) de la Partie III ci-dessus, mis à jour automatiquement quand vous les modifiez là-bas. Tout le reste (frais préliminaires, achat du local, fonds de roulement) se modifie directement ici.
+            </p>
+          </div>
+
+          {/* PLAN DE FINANCEMENT */}
+          <div className="page-break-inside-avoid mb-10">
+            <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">II. Plan de Financement Envisagé<span className="text-[10px] font-normal text-slate-500 uppercase print:hidden">Édition activée</span></h3>
+            <table className="w-full text-xs border-collapse bg-white shadow-sm">
+              <thead><tr><th className="border bg-slate-50 p-3 text-left font-black" colSpan={3}>Plan de Financement</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td className="border p-4 font-medium">Apport Personnel</td>
+                  <td className="border p-1 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={pourcentApport}
+                        onChange={(e) => setPourcentApport(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                        className="w-12 bg-transparent text-center font-black p-1 outline-none print:border-none appearance-none"
+                      />
+                      <span className="font-black">%</span>
+                    </div>
+                  </td>
+                  <td className="border p-4 text-right font-black text-emerald-600 text-sm">{formatDH(apportPersonnel)}</td>
+                </tr>
+                <tr>
+                  <td className="border p-4 font-medium">Crédit Sollicité</td>
+                  <td className="border p-1 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={100 - pourcentApport}
+                        onChange={(e) => setPourcentApport(100 - Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                        className="w-12 bg-transparent text-center font-black p-1 outline-none print:border-none appearance-none"
+                      />
+                      <span className="font-black">%</span>
+                    </div>
+                  </td>
+                  <td className="border p-4 text-right font-black text-rose-600 text-sm">{formatDH(creditSollicite)}</td>
+                </tr>
+                <tr className="bg-slate-900 text-white"><td className="border p-4 font-black uppercase">Total Financement</td><td className="border p-4 text-center font-black">100 %</td><td className="border p-4 text-right font-black text-lg">{formatHT(totalInvestissement)}</td></tr>
+              </tbody>
+            </table>
+
+            <div className="mt-6 p-5 bg-[#fffdf0] border border-[#f5e3a8] rounded-xl flex items-start gap-4 print:hidden shadow-sm">
+              <Landmark className="h-8 w-8 text-[#d4af37] shrink-0" />
+              <div>
+                <h4 className="font-black text-[#856614] text-lg leading-tight mb-1">Demande de Financement</h4>
+                <p className="text-sm text-[#a3801f]">Enregistrez ce PDF pour le transmettre à la banque concernant le crédit de <strong className="font-black">{formatDH(creditSollicite)}</strong> pour votre projet.</p>
+              </div>
+            </div>
+
+            {/* Détail mensuel du crédit sollicité — même calcul et même composant que la page
+                "Simulateur de crédit" autonome, ici en lecture seule à partir du crédit ci-dessus. */}
+            <div className="mt-6 p-5 bg-white border border-slate-200 rounded-xl">
+              <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-3">Échéancier du crédit sollicité</h4>
+              <p className="mb-3 text-[10px] text-slate-500 italic">
+                Hypothèses retenues : montant de {formatHT(creditSollicite)} DH, taux de {tauxInteretCredit} %/an sur {dureeCreditAnnees} ans{typeDiffere !== 'aucun' ? `, dont ${dureeDiffereMois} mois de différé (${LIBELLE_DIFFERE[typeDiffere]})` : ', sans différé'} (modifiables dans le panneau "Hypothèses" de la Partie III, Calendrier d'exploitation).
+              </p>
+              <TableauAmortissementCredit montant={creditSollicite} tauxPct={tauxInteretCredit} dureeAnnees={dureeCreditAnnees} dureeDiffereMois={dureeDiffereMois} typeDiffere={typeDiffere} reploiParDefaut titre="Détail mois par mois" />
+            </div>
+          </div>
+
           {/* EXPLOITATION PRÉVISIONNELLE */}
           <div className="page-break-inside-avoid mb-10">
-            <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">IV. Chiffre d'Affaires Prévisionnel<span className="text-[10px] font-normal text-slate-500 uppercase print:hidden">Édition activée</span></h3>
+            <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">III. Exploitation Prévisionnelle détaillée : CA et Charges d'exploitation<span className="text-[10px] font-normal text-slate-500 uppercase print:hidden">Édition activée</span></h3>
             <table className="w-full text-xs border-collapse border border-slate-300 bg-white">
               <thead><tr className="bg-slate-100"><th className="border p-3 text-left">Nature des actes</th><th className="border p-3 text-center">Actes/Jour</th><th className="border p-3 text-center">Tarif Moyen (DH)</th><th className="border p-3 text-right">CA Quotidien</th><th className="border p-3 w-8 print:hidden"></th></tr></thead>
               <tbody>
@@ -580,157 +1048,20 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
             </table>
           </div>
 
-          {/* INVESTISSEMENT ET FINANCEMENT */}
-          <div className="page-break-inside-avoid mb-10">
-            <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">V. Programme d'Investissement & Financement<span className="text-[10px] font-normal text-slate-500 uppercase print:hidden">Édition activée</span></h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <table className="w-full text-xs border-collapse bg-white shadow-sm">
-                <thead><tr><th className="border bg-slate-50 p-3 text-left font-black" colSpan={2}>Investissement (TTC)</th></tr></thead>
-                <tbody>
-                  <tr>
-                    <td className="border p-3 font-medium">Frais Préliminaires</td>
-                    <td className="border p-1 text-right">
-                      <input type="number" value={fraisPreliminaires} onChange={(e) => setFraisPreliminaires(parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-right font-black p-2 outline-none print:border-none appearance-none" />
-                    </td>
-                  </tr>
-                  <tr className="bg-blue-50/40">
-                    <td className="border p-3 font-bold text-blue-900">{typeOccupation === 'achat' ? `Achat du Local (${surface}m²)` : `Frais d'installation (${surface}m² - Caution+Agence)`}</td>
-                    <td className="border p-1 text-right">
-                      <input
-                        type="number"
-                        value={Math.round(investissementFoncier)}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          // Repasse par prixM2/loyerM2Etat plutôt qu'un état séparé, pour que ce
-                          // montant reste toujours cohérent avec le champ "Prix au m²" des
-                          // Ajustements Généraux (les deux modifient la même donnée sous-jacente).
-                          if (typeOccupation === 'achat') setPrixM2(surface > 0 ? Math.round(val / surface) : 0);
-                          else setLoyerM2Etat(surface > 0 ? Math.round(val / (surface * 4)) : 0);
-                        }}
-                        className="w-full bg-transparent text-right font-black text-blue-700 p-2 outline-none print:border-none appearance-none"
-                      />
-                    </td>
-                  </tr>
-                  <tr><td className="border p-3 font-medium">Aménagements et Installations</td><td className="border p-3 text-right font-black">{formatHT(totalAmenagementTTC)}</td></tr>
-                  <tr><td className="border p-3 font-medium">Matériels & Équipements Lasers</td><td className="border p-3 text-right font-black">{formatHT(totalMaterielTTC)}</td></tr>
-                  <tr>
-                    <td className="border p-3 font-medium">Fonds de Roulement (Produits HN)</td>
-                    <td className="border p-1 text-right">
-                      <input type="number" value={bfr} onChange={(e) => setBfr(parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-right font-black p-2 outline-none print:border-none appearance-none" />
-                    </td>
-                  </tr>
-                  <tr><td className="border p-3 font-medium">Masse Salariale (1er mois)</td><td className="border p-3 text-right font-black">{formatHT(masseSalariale)}</td></tr>
-                  <tr className="bg-slate-900 text-white"><td className="border p-4 font-black uppercase">Total Investissement</td><td className="border p-4 text-right font-black text-lg">{formatHT(totalInvestissement)}</td></tr>
-                </tbody>
-              </table>
+          {/* PARTIE VI — TABLEAU D'EXPLOITATION PRÉVISIONNELLE */}
+          <div id="bp-partie-6" className="mb-10" style={{ breakBefore: 'page' }}>
+          <h2 className="text-2xl font-black uppercase mb-6 text-slate-900 border-b-2 border-slate-900 pb-3">VI. Tableau d'Exploitation Prévisionnelle</h2>
 
-              <table className="w-full text-xs border-collapse bg-white shadow-sm h-fit">
-                <thead><tr><th className="border bg-slate-50 p-3 text-left font-black" colSpan={3}>Plan de Financement</th></tr></thead>
-                <tbody>
-                  <tr>
-                    <td className="border p-4 font-medium">Apport Personnel</td>
-                    <td className="border p-1 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <input
-                          type="number"
-                          min={0}
-                          max={100}
-                          value={pourcentApport}
-                          onChange={(e) => setPourcentApport(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
-                          className="w-12 bg-transparent text-center font-black p-1 outline-none print:border-none appearance-none"
-                        />
-                        <span className="font-black">%</span>
-                      </div>
-                    </td>
-                    <td className="border p-4 text-right font-black text-emerald-600 text-sm">{formatDH(apportPersonnel)}</td>
-                  </tr>
-                  <tr>
-                    <td className="border p-4 font-medium">Crédit Sollicité</td>
-                    <td className="border p-1 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <input
-                          type="number"
-                          min={0}
-                          max={100}
-                          value={100 - pourcentApport}
-                          onChange={(e) => setPourcentApport(100 - Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
-                          className="w-12 bg-transparent text-center font-black p-1 outline-none print:border-none appearance-none"
-                        />
-                        <span className="font-black">%</span>
-                      </div>
-                    </td>
-                    <td className="border p-4 text-right font-black text-rose-600 text-sm">{formatDH(creditSollicite)}</td>
-                  </tr>
-                  <tr className="bg-slate-900 text-white"><td className="border p-4 font-black uppercase">Total Financement</td><td className="border p-4 text-center font-black">100 %</td><td className="border p-4 text-right font-black text-lg">{formatHT(totalInvestissement)}</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <p className="mt-2 text-[10px] text-slate-400 italic print:hidden">
-              "Aménagements", "Matériels" et "Masse Salariale" ne sont pas des cases à remplir : ce sont les totaux des tableaux I, II et III ci-dessus, mis à jour automatiquement quand vous les modifiez là-bas. Les 2 lignes "Total" font pareil avec tout le tableau. Tout le reste (frais préliminaires, achat du local, fonds de roulement, % apport/crédit) se modifie directement ici.
-            </p>
-            
-            <div className="mt-6 p-5 bg-[#fffdf0] border border-[#f5e3a8] rounded-xl flex items-start gap-4 print:hidden shadow-sm">
-              <Landmark className="h-8 w-8 text-[#d4af37] shrink-0" />
-              <div>
-                <h4 className="font-black text-[#856614] text-lg leading-tight mb-1">Demande de Financement</h4>
-                <p className="text-sm text-[#a3801f]">Enregistrez ce PDF pour le transmettre à la banque concernant le crédit de <strong className="font-black">{formatDH(creditSollicite)}</strong> pour votre projet.</p>
-              </div>
-            </div>
+          {/* COMPTE DE PRODUITS ET CHARGES
+              Pas de page-break-inside-avoid ici : ce bloc (tableaux + graphique) est trop grand pour
+              tenir sur une seule page, donc l'imposer forçait tout le bloc — y compris son titre — à
+              sauter en entier sur la page suivante, laissant la page précédente quasi vide sous le
+              titre "VI. Tableau d'Exploitation Prévisionnelle". Le graphique garde sa propre protection
+              plus bas (il est petit, lui, et ne doit pas être coupé en deux). */}
+          <div className="mb-10">
+            <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">Compte de Produits et Charges (CPC)<span className="text-[10px] font-normal text-slate-500 uppercase print:hidden">Édition activée</span></h3>
 
-            {/* Détail mensuel du crédit sollicité — même calcul et même composant que la page
-                "Simulateur de crédit" autonome, ici en lecture seule à partir du crédit ci-dessus. */}
-            <div className="mt-6 p-5 bg-white border border-slate-200 rounded-xl">
-              <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-3">Échéancier du crédit sollicité</h4>
-              <TableauAmortissementCredit montant={creditSollicite} tauxPct={tauxInteretCredit} dureeAnnees={dureeCreditAnnees} reploiParDefaut titre="Détail mois par mois" />
-            </div>
-          </div>
-
-          {/* COMPTE DE PRODUITS ET CHARGES */}
-          <div className="page-break-inside-avoid mb-10">
-            <h3 className="text-xl font-black text-slate-900 border-l-4 border-blue-600 pl-3 mb-4 flex justify-between items-end">VI. Compte de Produits et Charges (CPC)<span className="text-[10px] font-normal text-slate-500 uppercase print:hidden">Édition activée</span></h3>
-
-            {/* Hypothèses fiscales et financières */}
-            <div className="mb-6 p-5 bg-white rounded-2xl border border-slate-200 shadow-sm print:hidden">
-              <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-3">Hypothèses (régime fiscal, amortissements, crédit)</h4>
-              <div className="flex flex-wrap items-end gap-6">
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Régime fiscal</label>
-                  <select value={regimeFiscal} onChange={(e) => setRegimeFiscal(e.target.value as 'IR' | 'IS')} className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
-                    <option value="IR">IR — barème progressif (profession libérale, RNR)</option>
-                    <option value="IS">IS — 20 % (société)</option>
-                  </select>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Amort. Aménagements (%/an)</label>
-                  <input type="number" step="0.5" value={tauxAmortAmenagements} onChange={(e) => setTauxAmortAmenagements(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Amort. Matériel (%/an)</label>
-                  <input type="number" step="0.5" value={tauxAmortMateriel} onChange={(e) => setTauxAmortMateriel(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="bp-croissance-ca" className="text-[10px] font-bold text-slate-500 uppercase">Croissance CA (%/an)</label>
-                  <input id="bp-croissance-ca" type="number" step="0.5" value={croissanceCAPct} onChange={(e) => setCroissanceCAPct(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="bp-croissance-charges" className="text-[10px] font-bold text-slate-500 uppercase">Hausse des charges (%/an)</label>
-                  <input id="bp-croissance-charges" type="number" step="0.5" value={croissanceChargesPct} onChange={(e) => setCroissanceChargesPct(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Taux crédit (%/an)</label>
-                  <input type="number" step="0.05" value={tauxInteretCredit} onChange={(e) => setTauxInteretCredit(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Durée crédit (ans)</label>
-                  <input type="number" value={dureeCreditAnnees} onChange={(e) => setDureeCreditAnnees(parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-blue-700 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-              </div>
-              <p className="mt-3 text-[10px] text-slate-400 italic">
-                Valeurs pré-remplies ci-dessus, modifiables librement — sources : amort. aménagements 10 %/an (taux CGI usuel) ; amort. matériel 15 %/an (catégorie générale CGI "matériel et outillage", 10-20 % admis — à confirmer avec un expert-comptable, aucun taux spécifique publié pour le matériel médical) ; taux crédit 4,65 % (taux débiteur moyen réel du crédit équipement, enquête Bank Al-Maghrib T2 2026, remplacez par le taux de votre banque si différent). Régime IR = barème progressif marocain 2026 ; régime IS = 20 % (+ CSS au-delà de 1M DH de bénéfice).
-              </p>
-            </div>
-
-            {/* Résumé imprimé des hypothèses ci-dessus : le panneau de saisie est print:hidden comme
+            {/* Résumé imprimé des hypothèses ci-dessous (panneau déplacé sous le Calendrier d'exploitation) : le panneau de saisie est print:hidden comme
                 tous les formulaires du document, donc sans ce résumé, le PDF montrait un CPC sur 5
                 ans sans jamais dire à quel régime fiscal, quels taux d'amortissement ni quel taux de
                 crédit il correspondait. */}
@@ -738,7 +1069,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
               <strong className="text-slate-800">Hypothèses retenues pour le CPC :</strong> régime {regimeFiscal === 'IR' ? 'IR — barème progressif' : 'IS — 20 %'} ;
               {' '}amortissement aménagements {tauxAmortAmenagements} %/an, matériel {tauxAmortMateriel} %/an ;
               {' '}chiffre d'affaires +{croissanceCAPct} %/an, charges +{croissanceChargesPct} %/an ;
-              {' '}crédit à {tauxInteretCredit} %/an sur {dureeCreditAnnees} ans.
+              {' '}crédit à {tauxInteretCredit} %/an sur {dureeCreditAnnees} ans{typeDiffere !== 'aucun' ? `, dont ${dureeDiffereMois} mois de différé (${LIBELLE_DIFFERE[typeDiffere]})` : ''}.
             </p>
 
             {/* Charges externes */}
@@ -797,6 +1128,9 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
                   )}
                   <tr><td className="border p-3 pl-6 text-slate-600">− Impôt ({regimeFiscal === 'IR' ? 'IR, barème' : 'IS 20% + CSS'})</td>{projection.map((l) => <td key={l.rang} className="border p-3 text-right font-semibold text-rose-600">{formatHT(l.impot)}</td>)}</tr>
                   <tr className="bg-slate-900 text-white"><td className="border p-4 font-black uppercase">Résultat Net</td>{projection.map((l) => <td key={l.rang} className="border p-4 text-right font-black">{formatHT(l.resultatNet)}</td>)}</tr>
+                  <tr className="bg-emerald-50"><td className="border p-4 font-black uppercase text-emerald-900">Cash-Flow</td>{cashFlow.map((l) => <td key={l.rang} className="border p-4 text-right font-black text-emerald-700">{formatHT(l.valeur)}</td>)}</tr>
+                  <tr className="text-slate-500"><td className="border p-3 italic">Cash-Flow / Chiffre d'Affaires</td>{cashFlow.map((l) => <td key={l.rang} className="border p-3 text-right italic">{Math.round(l.surCA * 100)} %</td>)}</tr>
+                  <tr className="bg-emerald-50"><td className="border p-4 font-black uppercase text-emerald-900">Cash-Flow Cumulés</td>{cashFlow.map((l) => <td key={l.rang} className="border p-4 text-right font-black text-emerald-700">{formatHT(l.cumule)}</td>)}</tr>
                   <tr className="text-slate-500"><td className="border p-3 italic">Capital du crédit remboursé (hors CPC)</td>{projection.map((l) => <td key={l.rang} className="border p-3 text-right italic">{formatHT(l.capitalRembourse)}</td>)}</tr>
                 </tbody>
               </table>
@@ -815,6 +1149,8 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
             <p className="mt-2 text-[10px] text-slate-400 italic">
               Exercices civils : l'année {projection[0].annee} court du mois de démarrage au 31 décembre (personnel, charges, loyer et amortissements au prorata des mois). Les années suivantes sont des années pleines : chiffre d'affaires +{croissanceCAPct} % et charges (externes, personnel, loyer) +{croissanceChargesPct} % par an, à partir de la valeur annualisée de l'année 1. Amortissements linéaires, intérêts issus de l'échéancier mensuel du crédit. Un déficit est reporté et s'impute sur les bénéfices des années suivantes avant calcul de l'impôt (durée légale de report à confirmer avec un expert-comptable).
             </p>
+          </div>
+
           </div>
 
         </div>
