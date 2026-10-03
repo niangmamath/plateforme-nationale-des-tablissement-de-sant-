@@ -350,14 +350,8 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
   };
 
   // --- CALCULS MATHÉMATIQUES GLOBAUX ---
-  const surfaceInitiale = config.surfaceDefaut || 80;
-
   const baseAmenagementHT = amenagements.reduce((acc, curr) => acc + curr.prix, 0);
-  // Corrigé : comparait auparavant à 80m² en dur, quelle que soit la surface par défaut réelle de
-  // la spécialité (config.surfaceDefaut) — un surcoût apparaissait à tort dès que la surface
-  // différait de 80m², même pour une spécialité dont la surface par défaut est différente.
-  const surcoutSurfaceHT = (surface - surfaceInitiale) * 1500;
-  const totalAmenagementHT = baseAmenagementHT + surcoutSurfaceHT;
+  const totalAmenagementHT = baseAmenagementHT;
   const totalAmenagementTTC = totalAmenagementHT * 1.20;
 
   const masseSalariale = effectifs.reduce((acc, curr) => acc + (curr.qte * curr.salaire), 0);
@@ -679,9 +673,6 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
                     <td className="border border-slate-300 p-1"><input type="number" placeholder="Prix" value={newAmenagementPrix} onChange={(e) => setNewAmenagementPrix(e.target.value)} className="w-full p-1 text-xs text-right" /></td>
                     <td className="border border-slate-300 p-1 text-center"><button onClick={handleAddAmenagement} className="bg-blue-600 text-white p-1.5 rounded"><Plus className="h-3 w-3 mx-auto" /></button></td>
                   </tr>
-                  {surface !== surfaceInitiale && (
-                    <tr className="bg-blue-50/50"><td className="border border-slate-300 p-2 text-blue-700 font-medium">Ajustement surface ({surface} m² vs {surfaceInitiale} m² référence)</td><td className="border border-slate-300 p-2 text-right font-bold text-blue-700">{formatHT(surcoutSurfaceHT)}</td><td className="border border-slate-300 print:hidden"></td></tr>
-                  )}
                   <tr className="bg-slate-900 text-white"><td className="border border-slate-900 p-2 text-right font-black">PT TTC Aménagement :</td><td className="border border-slate-900 p-2 text-right font-black text-sm" colSpan={2}>{formatHT(totalAmenagementTTC)}</td></tr>
                 </tbody>
               </table>
