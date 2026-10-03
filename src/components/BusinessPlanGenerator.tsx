@@ -78,7 +78,6 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
   // jamais pré-rempli avec une affirmation inventée. Comme le reste de la personnalisation, rien
   // n'est mémorisé d'un dossier à l'autre.
   const [adresseCabinet, setAdresseCabinet] = useState('');
-  const [identifiantsCabinet, setIdentifiantsCabinet] = useState('');
   const [denominationSociale, setDenominationSociale] = useState('');
   const [formeJuridique, setFormeJuridique] = useState('');
   const [promoteurNom, setPromoteurNom] = useState('');
@@ -489,7 +488,6 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
             <div className="text-sm text-slate-600 space-y-2 border-t-2 border-slate-900 pt-6">
               <p className="font-black text-slate-900">{config.specialiteNom}</p>
               <AutoTextarea value={adresseCabinet} onChange={(e) => setAdresseCabinet(e.target.value)} placeholder="Adresse du cabinet (à compléter)" rows={1} className="w-full text-center bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500 print:bg-transparent print:border-none print:p-0 placeholder:italic placeholder:text-slate-400" />
-              <AutoTextarea value={identifiantsCabinet} onChange={(e) => setIdentifiantsCabinet(e.target.value)} placeholder="RC, IF, Patente, CNSS... (à compléter)" rows={1} className="w-full text-center bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500 print:bg-transparent print:border-none print:p-0 placeholder:italic placeholder:text-slate-400" />
               <p className="text-xs text-slate-400 pt-2">{new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}</p>
             </div>
           </div>
@@ -1137,9 +1135,6 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
               )}
             </div>
 
-            <p className="mt-2 text-[10px] text-slate-400 italic">
-              Exercices civils : l'année {projection[0].annee} court du mois de démarrage au 31 décembre (personnel, charges, loyer et amortissements au prorata des mois). Les années suivantes sont des années pleines : chiffre d'affaires +{croissanceCAPct} % et charges (externes, personnel, loyer) +{croissanceChargesPct} % par an, à partir de la valeur annualisée de l'année 1. Amortissements linéaires, intérêts issus de l'échéancier mensuel du crédit. Un déficit est reporté et s'impute sur les bénéfices des années suivantes avant calcul de l'impôt (durée légale de report à confirmer avec un expert-comptable).
-            </p>
           </div>
 
           </div>
