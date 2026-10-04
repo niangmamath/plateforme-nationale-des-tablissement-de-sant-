@@ -9,6 +9,8 @@ import { motion, AnimatePresence } from 'motion/react';
 
 // LE GÉNÉRATEUR UNIVERSEL ET SES CONFIGURATIONS (L'ADN)
 import BusinessPlanGenerator from './BusinessPlanGenerator';
+import AuthModal from './AuthModal';
+import { useAuth } from '../contexts/AuthContext';
 import { Etablissement, VilleGeo } from '../types';
 import { ICONES, ICONE_DEFAUT } from '../config/specialiteVisuels';
 
@@ -88,6 +90,22 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
   const [selectedSpecialty, setSelectedSpecialty] = useState<string | null>(null);
   const [selectedAreaForBP, setSelectedAreaForBP] = useState<any | null>(null);
   const [isExpertMode, setIsExpertMode] = useState(false);
+
+  // Le générateur de business plan nécessite un compte (pour sauvegarder/restaurer le
+  // brouillon — voir AuthContext). Si on clique "Simuler B.P" sans être connecté, on ouvre la
+  // modale de connexion et on retient la zone visée pour enchaîner dessus une fois connecté.
+  const { utilisateur } = useAuth();
+  const [authModalOuverte, setAuthModalOuverte] = useState(false);
+  const [zoneEnAttenteApresAuth, setZoneEnAttenteApresAuth] = useState<any | null>(null);
+
+  const demanderSimulationBP = (area: any) => {
+    if (utilisateur) {
+      setSelectedAreaForBP(area);
+    } else {
+      setZoneEnAttenteApresAuth(area);
+      setAuthModalOuverte(true);
+    }
+  };
 
   // Distribution initiale par défaut (total = ~100)
   const [weights, setWeights] = useState<SpecialitePoids>({ 
@@ -360,7 +378,7 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
                         </div>
                       </td>
                       <td className="py-4 pr-4 text-right">
-                        <button onClick={() => setSelectedAreaForBP(area)} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-[10px] font-bold uppercase tracking-wider text-white rounded-lg transition-colors shadow-lg shadow-blue-900/20">
+                        <button onClick={() => demanderSimulationBP(area)} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-[10px] font-bold uppercase tracking-wider text-white rounded-lg transition-colors shadow-lg shadow-blue-900/20">
                           <TrendingUp className="h-3 w-3" /> Simuler B.P
                         </button>
                       </td>
@@ -386,6 +404,12 @@ export default function ScoringSection({ villes, etablissements, initialVilleId,
           />
         )}
       </AnimatePresence>
+
+      <AuthModal
+        isOpen={authModalOuverte}
+        onClose={() => { setAuthModalOuverte(false); setZoneEnAttenteApresAuth(null); }}
+        onSucces={() => { if (zoneEnAttenteApresAuth) setSelectedAreaForBP(zoneEnAttenteApresAuth); setZoneEnAttenteApresAuth(null); }}
+      />
     </section>
   );
 }

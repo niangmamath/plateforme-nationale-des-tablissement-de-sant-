@@ -215,6 +215,137 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
     return () => { window.removeEventListener('beforeprint', avant); window.removeEventListener('afterprint', apres); };
   }, []);
 
+  // --- PERSISTANCE DU BROUILLON ---
+  // Un formulaire de cette taille (~40 champs) se remplit rarement d'une traite : sans
+  // sauvegarde, fermer l'onglet ou se tromper de navigation faisait tout perdre (ScoringSection
+  // exige déjà un compte avant d'ouvrir ce générateur — voir AuthModal). On sérialise les champs
+  // saisis — pas les buffers "nouvelle ligne" ni le logo, transitoires ou volumineux — dans un
+  // seul objet JSON par (utilisateur, zone, spécialité), voir server/businessPlanDrafts.ts.
+  const zoneId: string | undefined = area?.id;
+  const specialiteId: string | undefined = config?.id;
+
+  const construireBrouillon = () => ({
+    surface, typeOccupation, amenagements, effectifs,
+    titrePerso, sousTitrePerso,
+    adresseCabinet, denominationSociale, formeJuridique, promoteurNom, titrePromoteur, adressePromoteur,
+    diplomesObtenus, experienceProfessionnelle, relationsBancaires, clienteleTexte,
+    prestationsTexte, concurrenceTexte,
+    activiteEntrepriseTexte, objetProgrammeTexte, natureActiviteTexte, emplacementTexte, professionActuelleTexte, localTexte,
+    machines, equipementTTC, actes,
+    fraisPreliminaires, bfr, pourcentApport, prixM2, loyerM2Etat,
+    regimeFiscal, chargesExternes,
+    tauxAmortAmenagements, tauxAmortMateriel,
+    tauxInteretCredit, dureeCreditAnnees, typeDiffere, dureeDiffereMois,
+    moisDemarrage, anneeDemarrage, joursParMois,
+    croissanceCAPct, croissanceChargesPct,
+  });
+
+  const appliquerBrouillon = (b: Record<string, any>) => {
+    if (b.surface !== undefined) setSurface(b.surface);
+    if (b.typeOccupation !== undefined) setTypeOccupation(b.typeOccupation);
+    if (b.amenagements !== undefined) setAmenagements(b.amenagements);
+    if (b.effectifs !== undefined) setEffectifs(b.effectifs);
+    if (b.titrePerso !== undefined) setTitrePerso(b.titrePerso);
+    if (b.sousTitrePerso !== undefined) setSousTitrePerso(b.sousTitrePerso);
+    if (b.adresseCabinet !== undefined) setAdresseCabinet(b.adresseCabinet);
+    if (b.denominationSociale !== undefined) setDenominationSociale(b.denominationSociale);
+    if (b.formeJuridique !== undefined) setFormeJuridique(b.formeJuridique);
+    if (b.promoteurNom !== undefined) setPromoteurNom(b.promoteurNom);
+    if (b.titrePromoteur !== undefined) setTitrePromoteur(b.titrePromoteur);
+    if (b.adressePromoteur !== undefined) setAdressePromoteur(b.adressePromoteur);
+    if (b.diplomesObtenus !== undefined) setDiplomesObtenus(b.diplomesObtenus);
+    if (b.experienceProfessionnelle !== undefined) setExperienceProfessionnelle(b.experienceProfessionnelle);
+    if (b.relationsBancaires !== undefined) setRelationsBancaires(b.relationsBancaires);
+    if (b.clienteleTexte !== undefined) setClienteleTexte(b.clienteleTexte);
+    if (b.prestationsTexte !== undefined) setPrestationsTexte(b.prestationsTexte);
+    if (b.concurrenceTexte !== undefined) setConcurrenceTexte(b.concurrenceTexte);
+    if (b.activiteEntrepriseTexte !== undefined) setActiviteEntrepriseTexte(b.activiteEntrepriseTexte);
+    if (b.objetProgrammeTexte !== undefined) setObjetProgrammeTexte(b.objetProgrammeTexte);
+    if (b.natureActiviteTexte !== undefined) setNatureActiviteTexte(b.natureActiviteTexte);
+    if (b.emplacementTexte !== undefined) setEmplacementTexte(b.emplacementTexte);
+    if (b.professionActuelleTexte !== undefined) setProfessionActuelleTexte(b.professionActuelleTexte);
+    if (b.localTexte !== undefined) setLocalTexte(b.localTexte);
+    if (b.machines !== undefined) setMachines(b.machines);
+    if (b.equipementTTC !== undefined) setEquipementTTC(b.equipementTTC);
+    if (b.actes !== undefined) setActes(b.actes);
+    if (b.fraisPreliminaires !== undefined) setFraisPreliminaires(b.fraisPreliminaires);
+    if (b.bfr !== undefined) setBfr(b.bfr);
+    if (b.pourcentApport !== undefined) setPourcentApport(b.pourcentApport);
+    if (b.prixM2 !== undefined) setPrixM2(b.prixM2);
+    if (b.loyerM2Etat !== undefined) setLoyerM2Etat(b.loyerM2Etat);
+    if (b.regimeFiscal !== undefined) setRegimeFiscal(b.regimeFiscal);
+    if (b.chargesExternes !== undefined) setChargesExternes(b.chargesExternes);
+    if (b.tauxAmortAmenagements !== undefined) setTauxAmortAmenagements(b.tauxAmortAmenagements);
+    if (b.tauxAmortMateriel !== undefined) setTauxAmortMateriel(b.tauxAmortMateriel);
+    if (b.tauxInteretCredit !== undefined) setTauxInteretCredit(b.tauxInteretCredit);
+    if (b.dureeCreditAnnees !== undefined) setDureeCreditAnnees(b.dureeCreditAnnees);
+    if (b.typeDiffere !== undefined) setTypeDiffere(b.typeDiffere);
+    if (b.dureeDiffereMois !== undefined) setDureeDiffereMois(b.dureeDiffereMois);
+    if (b.moisDemarrage !== undefined) setMoisDemarrage(b.moisDemarrage);
+    if (b.anneeDemarrage !== undefined) setAnneeDemarrage(b.anneeDemarrage);
+    if (b.joursParMois !== undefined) setJoursParMois(b.joursParMois);
+    if (b.croissanceCAPct !== undefined) setCroissanceCAPct(b.croissanceCAPct);
+    if (b.croissanceChargesPct !== undefined) setCroissanceChargesPct(b.croissanceChargesPct);
+  };
+
+  const [etatBrouillon, setEtatBrouillon] = useState<'chargement' | 'restaure' | 'vide' | 'sauvegarde' | 'sauvegarde_ok' | 'erreur'>('chargement');
+  // true une fois le chargement initial terminé : la sauvegarde auto ne doit démarrer qu'à partir
+  // de là, sinon la restauration elle-même (qui passe par les mêmes setters que la saisie)
+  // déclencherait une sauvegarde qui écraserait un brouillon par les données qu'on vient d'en tirer
+  // (sans effet pervers ici, mais aussi par les anciennes valeurs par défaut le temps du aller-retour réseau).
+  const brouillonChargeRef = useRef(false);
+
+  useEffect(() => {
+    if (!isOpen || !zoneId || !specialiteId) return;
+    brouillonChargeRef.current = false;
+    setEtatBrouillon('chargement');
+    fetch(`/api/business-plan-draft?zoneId=${encodeURIComponent(zoneId)}&specialiteId=${encodeURIComponent(specialiteId)}`, { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((brouillon) => {
+        if (brouillon?.data) {
+          appliquerBrouillon(brouillon.data);
+          setEtatBrouillon('restaure');
+        } else {
+          setEtatBrouillon('vide');
+        }
+      })
+      .catch(() => setEtatBrouillon('erreur'))
+      .finally(() => { brouillonChargeRef.current = true; });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, zoneId, specialiteId]);
+
+  useEffect(() => {
+    if (!isOpen || !zoneId || !specialiteId || !brouillonChargeRef.current) return;
+    setEtatBrouillon('sauvegarde');
+    const minuteur = setTimeout(() => {
+      fetch('/api/business-plan-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ zoneId, specialiteId, data: construireBrouillon() }),
+      })
+        .then((res) => setEtatBrouillon(res.ok ? 'sauvegarde_ok' : 'erreur'))
+        .catch(() => setEtatBrouillon('erreur'));
+    }, 1500);
+    return () => clearTimeout(minuteur);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isOpen, zoneId, specialiteId,
+    surface, typeOccupation, amenagements, effectifs,
+    titrePerso, sousTitrePerso,
+    adresseCabinet, denominationSociale, formeJuridique, promoteurNom, titrePromoteur, adressePromoteur,
+    diplomesObtenus, experienceProfessionnelle, relationsBancaires, clienteleTexte,
+    prestationsTexte, concurrenceTexte,
+    activiteEntrepriseTexte, objetProgrammeTexte, natureActiviteTexte, emplacementTexte, professionActuelleTexte, localTexte,
+    machines, equipementTTC, actes,
+    fraisPreliminaires, bfr, pourcentApport, prixM2, loyerM2Etat,
+    regimeFiscal, chargesExternes,
+    tauxAmortAmenagements, tauxAmortMateriel,
+    tauxInteretCredit, dureeCreditAnnees, typeDiffere, dureeDiffereMois,
+    moisDemarrage, anneeDemarrage, joursParMois,
+    croissanceCAPct, croissanceChargesPct,
+  ]);
+
   const handleChoisirLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const fichier = e.target.files?.[0];
     e.target.value = ''; // permet de re-choisir le même fichier après l'avoir retiré
@@ -468,7 +599,17 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
         
         {/* EN-TÊTE */}
         <div className="flex justify-between items-center p-4 bg-slate-900 text-white print:hidden">
-          <div className="flex items-center gap-3"><FileText className="h-6 w-6 text-blue-400" /><h2 className="text-lg font-black uppercase tracking-wide">{config.titre}</h2></div>
+          <div className="flex items-center gap-3">
+            <FileText className="h-6 w-6 text-blue-400" />
+            <h2 className="text-lg font-black uppercase tracking-wide">{config.titre}</h2>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              {etatBrouillon === 'chargement' && 'Chargement du brouillon…'}
+              {etatBrouillon === 'restaure' && '✓ Brouillon restauré'}
+              {etatBrouillon === 'sauvegarde' && 'Sauvegarde…'}
+              {etatBrouillon === 'sauvegarde_ok' && '✓ Sauvegardé'}
+              {etatBrouillon === 'erreur' && <span className="text-rose-400">Sauvegarde impossible</span>}
+            </span>
+          </div>
           <div className="flex items-center gap-3">
             <button onClick={() => window.print()} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold uppercase transition-colors"><Printer className="h-4 w-4" /> PDF</button>
             <button onClick={onClose} className="p-2 bg-slate-800 hover:bg-rose-600 rounded-full transition-colors"><X className="h-5 w-5" /></button>

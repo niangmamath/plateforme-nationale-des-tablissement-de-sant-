@@ -6,6 +6,8 @@ import { extraireEtInserer } from './extraction';
 import { extraireEtInsererZone } from './demographie';
 import { repondre, ErreurChat, type MessageChat } from './chat';
 import { enregistrerSignalement, extraireIp, ErreurSignalement } from './signalements';
+import { inscrire, connecter, creerJeton, cookieSession, cookieDeconnexion, utilisateurDepuisCookies, ErreurAuth } from './auth';
+import { sauvegarderBrouillon, recupererBrouillon, ErreurBrouillon } from './businessPlanDrafts';
 
 const app = express();
 const PORT = process.env.API_PORT || 4000;
@@ -105,6 +107,95 @@ app.post('/api/signalements', async (req, res) => {
       return;
     }
     console.error('Erreur /api/signalements :', err);
+    res.status(500).json({ error: 'Erreur serveur, réessayez plus tard.' });
+  }
+});
+
+// Comptes utilisateur (nécessaires pour sauvegarder/restaurer un brouillon de business plan —
+// voir server/auth.ts). Mêmes routes que api/auth/*.ts côté Vercel.
+app.post('/api/auth/signup', async (req, res) => {
+  try {
+    const { email, password } = req.body ?? {};
+    const utilisateur = await inscrire(pool, email, password);
+    res.setHeader('Set-Cookie', cookieSession(creerJeton(utilisateur)));
+    res.status(201).json(utilisateur);
+  } catch (err: any) {
+    if (err instanceof ErreurAuth) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    console.error('Erreur /api/auth/signup :', err);
+    res.status(500).json({ error: 'Erreur serveur, réessayez plus tard.' });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body ?? {};
+    const utilisateur = await connecter(pool, email, password);
+    res.setHeader('Set-Cookie', cookieSession(creerJeton(utilisateur)));
+    res.status(200).json(utilisateur);
+  } catch (err: any) {
+    if (err instanceof ErreurAuth) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    console.error('Erreur /api/auth/login :', err);
+    res.status(500).json({ error: 'Erreur serveur, réessayez plus tard.' });
+  }
+});
+
+app.post('/api/auth/logout', (_req, res) => {
+  res.setHeader('Set-Cookie', cookieDeconnexion());
+  res.status(200).json({ ok: true });
+});
+
+app.get('/api/auth/me', (req, res) => {
+  const utilisateur = utilisateurDepuisCookies(req.headers.cookie);
+  if (!utilisateur) {
+    res.status(401).json({ error: 'Non connecté.' });
+    return;
+  }
+  res.status(200).json(utilisateur);
+});
+
+// Brouillon de business plan (un par utilisateur/zone/spécialité) — voir server/businessPlanDrafts.ts.
+app.get('/api/business-plan-draft', async (req, res) => {
+  const utilisateur = utilisateurDepuisCookies(req.headers.cookie);
+  if (!utilisateur) {
+    res.status(401).json({ error: 'Non connecté.' });
+    return;
+  }
+  try {
+    const { zoneId, specialiteId } = req.query;
+    const brouillon = await recupererBrouillon(pool, utilisateur.id, zoneId, specialiteId);
+    res.status(200).json(brouillon);
+  } catch (err: any) {
+    if (err instanceof ErreurBrouillon) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    console.error('Erreur GET /api/business-plan-draft :', err);
+    res.status(500).json({ error: 'Erreur serveur, réessayez plus tard.' });
+  }
+});
+
+app.post('/api/business-plan-draft', async (req, res) => {
+  const utilisateur = utilisateurDepuisCookies(req.headers.cookie);
+  if (!utilisateur) {
+    res.status(401).json({ error: 'Non connecté.' });
+    return;
+  }
+  try {
+    const { zoneId, specialiteId, data } = req.body ?? {};
+    await sauvegarderBrouillon(pool, utilisateur.id, zoneId, specialiteId, data);
+    res.status(200).json({ ok: true });
+  } catch (err: any) {
+    if (err instanceof ErreurBrouillon) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    console.error('Erreur POST /api/business-plan-draft :', err);
     res.status(500).json({ error: 'Erreur serveur, réessayez plus tard.' });
   }
 });
