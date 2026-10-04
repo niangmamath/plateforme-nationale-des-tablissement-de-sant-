@@ -6,7 +6,10 @@ import { extraireEtInserer } from './extraction';
 import { extraireEtInsererZone } from './demographie';
 import { repondre, ErreurChat, type MessageChat } from './chat';
 import { enregistrerSignalement, extraireIp, ErreurSignalement } from './signalements';
-import { inscrire, connecter, connecterAvecGoogle, creerJeton, cookieSession, cookieDeconnexion, utilisateurDepuisCookies, ErreurAuth } from './auth';
+import {
+  inscrire, connecter, connecterAvecGoogle, creerJeton, cookieSession, cookieDeconnexion, utilisateurDepuisCookies, ErreurAuth,
+  verifierEmail, renvoyerCodeVerification, demanderReinitialisationMotDePasse, reinitialiserMotDePasse,
+} from './auth';
 import { sauvegarderBrouillon, recupererBrouillon, ErreurBrouillon } from './businessPlanDrafts';
 
 const app = express();
@@ -129,9 +132,10 @@ app.post('/api/auth', async (req, res) => {
   try {
     switch (action) {
       case 'signup': {
+        // Volontairement pas de session ici : s'inscrire ne doit pas donner accès directement,
+        // l'utilisateur doit ensuite se connecter explicitement (voir action 'login').
         const { email, password } = req.body;
         const utilisateur = await inscrire(pool, email, password);
-        res.setHeader('Set-Cookie', cookieSession(creerJeton(utilisateur)));
         res.status(201).json(utilisateur);
         return;
       }
@@ -151,6 +155,30 @@ app.post('/api/auth', async (req, res) => {
       }
       case 'logout': {
         res.setHeader('Set-Cookie', cookieDeconnexion());
+        res.status(200).json({ ok: true });
+        return;
+      }
+      case 'verify-email': {
+        const { email, code } = req.body;
+        await verifierEmail(pool, email, code);
+        res.status(200).json({ ok: true });
+        return;
+      }
+      case 'resend-verification': {
+        const { email } = req.body;
+        await renvoyerCodeVerification(pool, email);
+        res.status(200).json({ ok: true });
+        return;
+      }
+      case 'forgot-password': {
+        const { email } = req.body;
+        await demanderReinitialisationMotDePasse(pool, email);
+        res.status(200).json({ ok: true, message: 'Si un compte existe avec cette adresse, un code vient de lui être envoyé.' });
+        return;
+      }
+      case 'reset-password': {
+        const { email, code, password } = req.body;
+        await reinitialiserMotDePasse(pool, email, code, password);
         res.status(200).json({ ok: true });
         return;
       }

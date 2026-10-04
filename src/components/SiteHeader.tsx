@@ -4,7 +4,8 @@
  */
 
 import React from 'react';
-import { Activity, Map, BarChart3, MapPin, Landmark } from 'lucide-react';
+import { Activity, Map, BarChart3, MapPin, Landmark, LogOut } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 interface LienNav {
   cible: string; // chemin réel, avec ancre éventuelle : "/", "/#scoring-section", "/simulateur-credit"...
@@ -36,6 +37,11 @@ interface SiteHeaderProps {
 // ses données chargées (effet dans App.tsx) ; si on y est déjà, ça défile directement, sans
 // re-déclencher de chargement.
 export default function SiteHeader({ route, ancre, naviguer }: SiteHeaderProps) {
+  // Aucune page de login/logout dédiée : la connexion se fait via la modale ouverte par "Simuler
+  // B.P" (voir ScoringSection) ; ici on affiche juste qui est connecté et un bouton pour se
+  // déconnecter, seul endroit de l'UI où cette action était possible jusqu'ici (deconnecter()
+  // existait dans AuthContext mais n'était appelé nulle part).
+  const { utilisateur, deconnecter } = useAuth();
   return (
     <header className="sticky top-0 z-[1010] bg-white/80 backdrop-blur-xl border-b border-slate-200/80 px-4 py-4 md:px-8 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)]">
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -76,6 +82,20 @@ export default function SiteHeader({ route, ancre, naviguer }: SiteHeaderProps) 
             );
           })}
         </nav>
+
+        {utilisateur && (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="hidden sm:inline text-slate-500 font-medium truncate max-w-[160px]" title={utilisateur.email}>{utilisateur.email}</span>
+            <button
+              onClick={() => deconnecter()}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-600 font-bold uppercase tracking-wide rounded-lg transition-colors"
+              title="Se déconnecter"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Déconnexion</span>
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

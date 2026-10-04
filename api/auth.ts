@@ -1,6 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getPool } from './_lib/db.js';
-import { inscrire, connecter, connecterAvecGoogle, creerJeton, cookieSession, cookieDeconnexion, utilisateurDepuisCookies, ErreurAuth } from '../server/auth.js';
+import {
+  inscrire, connecter, connecterAvecGoogle, creerJeton, cookieSession, cookieDeconnexion, utilisateurDepuisCookies, ErreurAuth,
+  verifierEmail, renvoyerCodeVerification, demanderReinitialisationMotDePasse, reinitialiserMotDePasse,
+} from '../server/auth.js';
 
 // Un seul fichier pour toutes les actions d'authentification (signup/login/google/logout) plutôt
 // que 5 fonctions Vercel séparées : le plan Hobby limite à 12 fonctions serverless par déploiement,
@@ -27,9 +30,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     switch (action) {
       case 'signup': {
+        // Volontairement pas de session ici : s'inscrire ne doit pas donner accès directement,
+        // l'utilisateur doit ensuite se connecter explicitement (voir action 'login').
         const { email, password } = req.body;
         const utilisateur = await inscrire(getPool(), email, password);
-        res.setHeader('Set-Cookie', cookieSession(creerJeton(utilisateur)));
         res.status(201).json(utilisateur);
         return;
       }
@@ -49,6 +53,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       case 'logout': {
         res.setHeader('Set-Cookie', cookieDeconnexion());
+        res.status(200).json({ ok: true });
+        return;
+      }
+      case 'verify-email': {
+        const { email, code } = req.body;
+        await verifierEmail(getPool(), email, code);
+        res.status(200).json({ ok: true });
+        return;
+      }
+      case 'resend-verification': {
+        const { email } = req.body;
+        await renvoyerCodeVerification(getPool(), email);
+        res.status(200).json({ ok: true });
+        return;
+      }
+      case 'forgot-password': {
+        // Réponse toujours générique : ne jamais laisser deviner si l'adresse est enregistrée.
+        const { email } = req.body;
+        await demanderReinitialisationMotDePasse(getPool(), email);
+        res.status(200).json({ ok: true, message: 'Si un compte existe avec cette adresse, un code vient de lui être envoyé.' });
+        return;
+      }
+      case 'reset-password': {
+        const { email, code, password } = req.body;
+        await reinitialiserMotDePasse(getPool(), email, code, password);
         res.status(200).json({ ok: true });
         return;
       }

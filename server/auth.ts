@@ -2,7 +2,9 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { serialize, parse } from 'cookie';
 import { OAuth2Client } from 'google-auth-library';
+import { randomInt, createHash } from 'crypto';
 import type { Pool } from 'pg';
+import { envoyerEmail, emailCodeVerification, emailBienvenue, emailCodeReinitialisation } from './email.js';
 
 export class ErreurAuth extends Error {
   constructor(public status: number, message: string) {
@@ -12,7 +14,7 @@ export class ErreurAuth extends Error {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const COOKIE_NOM = 'session';
-const DUREE_SESSION_JOURS = 30;
+const DUREE_SESSION_JOURS = 6;
 
 function secretSession(): string {
   const secret = process.env.SESSION_SECRET;
@@ -27,7 +29,10 @@ function normaliserEmail(email: unknown): string {
   return email.trim().toLowerCase();
 }
 
-function validerMotDePasse(mdp: unknown): string {
+// Utilisée à la connexion : juste des bornes de taille (format), jamais de règle de robustesse —
+// un compte créé avant un durcissement de la politique doit pouvoir continuer à se connecter avec
+// son mot de passe existant, même s'il ne la respecterait plus rétroactivement.
+function validerFormatMotDePasse(mdp: unknown): string {
   if (typeof mdp !== 'string' || mdp.length < 8) {
     throw new ErreurAuth(400, 'Le mot de passe doit contenir au moins 8 caractères.');
   }
@@ -35,14 +40,48 @@ function validerMotDePasse(mdp: unknown): string {
   return mdp;
 }
 
+// Utilisée uniquement quand on FIXE un mot de passe (inscription, réinitialisation) : au moins une
+// lettre ET un chiffre, pour qu'une suite de chiffres seule ("12345678") ne suffise plus.
+function validerNouveauMotDePasse(mdp: unknown): string {
+  const valeur = validerFormatMotDePasse(mdp);
+  if (!/[a-zA-Z]/.test(valeur) || !/[0-9]/.test(valeur)) {
+    throw new ErreurAuth(400, 'Le mot de passe doit contenir au moins une lettre et un chiffre.');
+  }
+  return valeur;
+}
+
 export interface UtilisateurPublic {
   id: number;
   email: string;
 }
 
+// --- OTP (vérification d'e-mail + réinitialisation de mot de passe) ---
+// Code à 6 chiffres, jamais stocké en clair (seul son SHA-256 l'est — voir migration 029), valable
+// 15 minutes, 5 essais max avant de devoir en redemander un, et un délai minimal entre deux envois
+// pour limiter l'abus (coût Resend, spam de la boîte visée).
+const OTP_DUREE_MIN = 15;
+const OTP_ESSAIS_MAX = 5;
+const OTP_DELAI_RENVOI_SEC = 60;
+
+function genererOtp(): string {
+  return String(randomInt(0, 1_000_000)).padStart(6, '0');
+}
+function hacherOtp(code: string): string {
+  return createHash('sha256').update(code).digest('hex');
+}
+function expirationOtp(): Date {
+  return new Date(Date.now() + OTP_DUREE_MIN * 60 * 1000);
+}
+function validerCodeOtp(code: unknown): string {
+  if (typeof code !== 'string' || !/^\d{6}$/.test(code)) {
+    throw new ErreurAuth(400, 'Code invalide (6 chiffres attendus).');
+  }
+  return code;
+}
+
 export async function inscrire(pool: Pool, emailBrut: unknown, mdpBrut: unknown): Promise<UtilisateurPublic> {
   const email = normaliserEmail(emailBrut);
-  const motDePasse = validerMotDePasse(mdpBrut);
+  const motDePasse = validerNouveauMotDePasse(mdpBrut);
 
   const existant = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
   if (existant.rows.length > 0) {
@@ -50,19 +89,25 @@ export async function inscrire(pool: Pool, emailBrut: unknown, mdpBrut: unknown)
   }
 
   const hash = await bcrypt.hash(motDePasse, 10);
+  const code = genererOtp();
   const { rows } = await pool.query<{ id: number }>(
-    'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id',
-    [email, hash]
+    `INSERT INTO users (email, password_hash, email_verification_otp_hash, email_verification_otp_expires)
+     VALUES ($1, $2, $3, $4) RETURNING id`,
+    [email, hash, hacherOtp(code), expirationOtp()]
   );
+
+  const { sujet, html } = emailCodeVerification(code);
+  await envoyerEmail(email, sujet, html);
+
   return { id: rows[0].id, email };
 }
 
 export async function connecter(pool: Pool, emailBrut: unknown, mdpBrut: unknown): Promise<UtilisateurPublic> {
   const email = normaliserEmail(emailBrut);
-  const motDePasse = validerMotDePasse(mdpBrut);
+  const motDePasse = validerFormatMotDePasse(mdpBrut);
 
-  const { rows } = await pool.query<{ id: number; password_hash: string | null }>(
-    'SELECT id, password_hash FROM users WHERE email = $1',
+  const { rows } = await pool.query<{ id: number; password_hash: string | null; email_verified: boolean }>(
+    'SELECT id, password_hash, email_verified FROM users WHERE email = $1',
     [email]
   );
   // Même message que « mot de passe incorrect » : ne pas révéler si l'email existe en base.
@@ -76,7 +121,136 @@ export async function connecter(pool: Pool, emailBrut: unknown, mdpBrut: unknown
   const valide = await bcrypt.compare(motDePasse, rows[0].password_hash);
   if (!valide) throw new ErreurAuth(401, 'E-mail ou mot de passe incorrect.');
 
+  if (!rows[0].email_verified) {
+    throw new ErreurAuth(403, 'Confirmez votre e-mail avant de vous connecter — entrez le code reçu, ou demandez-en un nouveau.');
+  }
+
   return { id: rows[0].id, email };
+}
+
+export async function verifierEmail(pool: Pool, emailBrut: unknown, codeBrut: unknown): Promise<void> {
+  const email = normaliserEmail(emailBrut);
+  const code = validerCodeOtp(codeBrut);
+
+  const { rows } = await pool.query<{
+    id: number; email_verified: boolean; email_verification_otp_hash: string | null;
+    email_verification_otp_expires: string | null; email_verification_otp_tries: number;
+  }>(
+    'SELECT id, email_verified, email_verification_otp_hash, email_verification_otp_expires, email_verification_otp_tries FROM users WHERE email = $1',
+    [email]
+  );
+  if (rows.length === 0) throw new ErreurAuth(400, 'Code incorrect ou expiré.');
+  const u = rows[0];
+  if (u.email_verified) return; // déjà vérifié : pas une erreur, l'utilisateur a pu cliquer deux fois
+
+  if (!u.email_verification_otp_hash || !u.email_verification_otp_expires || new Date(u.email_verification_otp_expires) < new Date()) {
+    throw new ErreurAuth(400, 'Code expiré — demandez-en un nouveau.');
+  }
+  if (u.email_verification_otp_tries >= OTP_ESSAIS_MAX) {
+    throw new ErreurAuth(400, 'Trop de tentatives — demandez un nouveau code.');
+  }
+
+  if (hacherOtp(code) !== u.email_verification_otp_hash) {
+    await pool.query('UPDATE users SET email_verification_otp_tries = email_verification_otp_tries + 1 WHERE id = $1', [u.id]);
+    throw new ErreurAuth(400, 'Code incorrect.');
+  }
+
+  await pool.query(
+    `UPDATE users SET email_verified = true, email_verification_otp_hash = NULL,
+       email_verification_otp_expires = NULL, email_verification_otp_tries = 0 WHERE id = $1`,
+    [u.id]
+  );
+
+  const { sujet, html } = emailBienvenue();
+  await envoyerEmail(email, sujet, html);
+}
+
+export async function renvoyerCodeVerification(pool: Pool, emailBrut: unknown): Promise<void> {
+  const email = normaliserEmail(emailBrut);
+  const { rows } = await pool.query<{ id: number; email_verified: boolean; email_verification_otp_expires: string | null }>(
+    'SELECT id, email_verified, email_verification_otp_expires FROM users WHERE email = $1',
+    [email]
+  );
+  if (rows.length === 0) throw new ErreurAuth(400, 'Aucun compte avec cette adresse.');
+  const u = rows[0];
+  if (u.email_verified) throw new ErreurAuth(400, 'Cette adresse est déjà vérifiée.');
+
+  if (u.email_verification_otp_expires) {
+    const envoyeDepuis = OTP_DUREE_MIN * 60 - (new Date(u.email_verification_otp_expires).getTime() - Date.now()) / 1000;
+    if (envoyeDepuis < OTP_DELAI_RENVOI_SEC) {
+      throw new ErreurAuth(429, `Patientez ${Math.ceil(OTP_DELAI_RENVOI_SEC - envoyeDepuis)} secondes avant de redemander un code.`);
+    }
+  }
+
+  const code = genererOtp();
+  await pool.query(
+    'UPDATE users SET email_verification_otp_hash = $1, email_verification_otp_expires = $2, email_verification_otp_tries = 0 WHERE id = $3',
+    [hacherOtp(code), expirationOtp(), u.id]
+  );
+  const { sujet, html } = emailCodeVerification(code);
+  await envoyerEmail(email, sujet, html);
+}
+
+// Toujours une réponse générique côté appelant (voir api/auth.ts) : ne jamais laisser deviner si
+// une adresse est enregistrée via ce flux.
+export async function demanderReinitialisationMotDePasse(pool: Pool, emailBrut: unknown): Promise<void> {
+  const email = normaliserEmail(emailBrut);
+  const { rows } = await pool.query<{ id: number; password_reset_otp_expires: string | null }>(
+    'SELECT id, password_reset_otp_expires FROM users WHERE email = $1',
+    [email]
+  );
+  if (rows.length === 0) return;
+  const u = rows[0];
+
+  if (u.password_reset_otp_expires) {
+    const envoyeDepuis = OTP_DUREE_MIN * 60 - (new Date(u.password_reset_otp_expires).getTime() - Date.now()) / 1000;
+    if (envoyeDepuis < OTP_DELAI_RENVOI_SEC) return; // envoi déjà parti récemment, pas d'erreur visible (réponse générique)
+  }
+
+  const code = genererOtp();
+  await pool.query(
+    'UPDATE users SET password_reset_otp_hash = $1, password_reset_otp_expires = $2, password_reset_otp_tries = 0 WHERE id = $3',
+    [hacherOtp(code), expirationOtp(), u.id]
+  );
+  const { sujet, html } = emailCodeReinitialisation(code);
+  await envoyerEmail(email, sujet, html);
+}
+
+export async function reinitialiserMotDePasse(pool: Pool, emailBrut: unknown, codeBrut: unknown, nouveauMdpBrut: unknown): Promise<void> {
+  const email = normaliserEmail(emailBrut);
+  const code = validerCodeOtp(codeBrut);
+  const nouveauMotDePasse = validerNouveauMotDePasse(nouveauMdpBrut);
+
+  const { rows } = await pool.query<{
+    id: number; password_reset_otp_hash: string | null; password_reset_otp_expires: string | null; password_reset_otp_tries: number;
+  }>(
+    'SELECT id, password_reset_otp_hash, password_reset_otp_expires, password_reset_otp_tries FROM users WHERE email = $1',
+    [email]
+  );
+  if (rows.length === 0) throw new ErreurAuth(400, 'Code incorrect ou expiré.');
+  const u = rows[0];
+
+  if (!u.password_reset_otp_hash || !u.password_reset_otp_expires || new Date(u.password_reset_otp_expires) < new Date()) {
+    throw new ErreurAuth(400, 'Code expiré — demandez-en un nouveau.');
+  }
+  if (u.password_reset_otp_tries >= OTP_ESSAIS_MAX) {
+    throw new ErreurAuth(400, 'Trop de tentatives — demandez un nouveau code.');
+  }
+  if (hacherOtp(code) !== u.password_reset_otp_hash) {
+    await pool.query('UPDATE users SET password_reset_otp_tries = password_reset_otp_tries + 1 WHERE id = $1', [u.id]);
+    throw new ErreurAuth(400, 'Code incorrect.');
+  }
+
+  const hash = await bcrypt.hash(nouveauMotDePasse, 10);
+  // Recevoir et saisir ce code prouve la possession de la boîte mail aussi sûrement que le code de
+  // vérification d'inscription : on en profite pour vérifier l'e-mail au passage si ce n'était pas
+  // déjà fait (compte créé avant l'ajout de cette fonctionnalité, par exemple).
+  await pool.query(
+    `UPDATE users SET password_hash = $1, email_verified = true,
+       password_reset_otp_hash = NULL, password_reset_otp_expires = NULL, password_reset_otp_tries = 0
+     WHERE id = $2`,
+    [hash, u.id]
+  );
 }
 
 let clientGoogle: OAuth2Client | undefined;
@@ -129,7 +303,7 @@ export async function connecterAvecGoogle(pool: Pool, idToken: unknown): Promise
   }
 
   const inserted = await pool.query<{ id: number }>(
-    'INSERT INTO users (email, google_sub) VALUES ($1, $2) RETURNING id',
+    'INSERT INTO users (email, google_sub, email_verified) VALUES ($1, $2, true) RETURNING id',
     [email, sub]
   );
   return { id: inserted.rows[0].id, email };
