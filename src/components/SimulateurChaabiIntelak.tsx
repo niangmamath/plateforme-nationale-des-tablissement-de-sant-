@@ -38,8 +38,8 @@ interface ProduitChaabi {
 }
 
 const PRODUITS: ProduitChaabi[] = [
-  { id: 'INTELAK_INVEST', nom: 'Chaabi Intelak Invest', tauxPct: 2, montantDefaut: 100000, montantMin: 5000, montantMax: 1200000, differeDefaut: 24, differeMin: 12, differeMax: 60, dureeDefaut: 84, dureeMin: 12, dureeMax: 114 },
-  { id: 'INTELAK_AL_QARAOUI', nom: 'Chaabi Intelak Al Qarawi Invest', tauxPct: 1.75, montantDefaut: 100000, montantMin: 5000, montantMax: 1200000, differeDefaut: 24, differeMin: 12, differeMax: 60, dureeDefaut: 84, dureeMin: 12, dureeMax: 114 },
+  { id: 'INTELAK_INVEST', nom: 'Intelak Invest', tauxPct: 2, montantDefaut: 100000, montantMin: 5000, montantMax: 1200000, differeDefaut: 24, differeMin: 12, differeMax: 60, dureeDefaut: 84, dureeMin: 12, dureeMax: 114 },
+  { id: 'INTELAK_AL_QARAOUI', nom: 'Intelak Al Qarawi Invest', tauxPct: 1.75, montantDefaut: 100000, montantMin: 5000, montantMax: 1200000, differeDefaut: 24, differeMin: 12, differeMax: 60, dureeDefaut: 84, dureeMin: 12, dureeMax: 114 },
   { id: 'BP_START_UP', nom: 'BP Start-Up', tauxPct: 5, montantDefaut: 100000, montantMin: 5000, montantMax: 1200000, differeDefaut: 36, differeMin: 12, differeMax: 60, dureeDefaut: 84, dureeMin: 12, dureeMax: 114 },
 ];
 
@@ -177,7 +177,7 @@ export default function SimulateurChaabiIntelak() {
 
         <p className="mt-6 text-[10px] text-slate-400 italic leading-relaxed text-center">
           Le résultat de cette simulation est donné à titre indicatif. Il ne constituera en aucun cas un engagement contractuel de la part de la Banque Populaire.
-          Produits, taux et conditions inspirés de l'offre réelle d'Al Moukawil Chaabi (Banque Populaire), à titre informatif et de comparaison — ceci n'est ni un outil officiel ni affilié à la banque ; vérifiez les conditions actuelles directement auprès d'elle avant toute décision.
+          Produits, taux et conditions inspirés de l'offre réelle de la Banque Populaire, à titre informatif et de comparaison — ceci n'est ni un outil officiel ni affilié à la banque ; vérifiez les conditions actuelles directement auprès d'elle avant toute décision.
         </p>
       </div>
     </section>
