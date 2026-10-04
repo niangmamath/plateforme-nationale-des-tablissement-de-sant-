@@ -96,8 +96,8 @@ export async function inscrire(pool: Pool, emailBrut: unknown, mdpBrut: unknown)
     [email, hash, hacherOtp(code), expirationOtp()]
   );
 
-  const { sujet, html } = emailCodeVerification(code);
-  await envoyerEmail(email, sujet, html);
+  const { sujet, html, texte } = emailCodeVerification(code);
+  await envoyerEmail(email, sujet, html, texte);
 
   return { id: rows[0].id, email };
 }
@@ -161,8 +161,8 @@ export async function verifierEmail(pool: Pool, emailBrut: unknown, codeBrut: un
     [u.id]
   );
 
-  const { sujet, html } = emailBienvenue();
-  await envoyerEmail(email, sujet, html);
+  const { sujet, html, texte } = emailBienvenue();
+  await envoyerEmail(email, sujet, html, texte);
 }
 
 export async function renvoyerCodeVerification(pool: Pool, emailBrut: unknown): Promise<void> {
@@ -187,8 +187,8 @@ export async function renvoyerCodeVerification(pool: Pool, emailBrut: unknown): 
     'UPDATE users SET email_verification_otp_hash = $1, email_verification_otp_expires = $2, email_verification_otp_tries = 0 WHERE id = $3',
     [hacherOtp(code), expirationOtp(), u.id]
   );
-  const { sujet, html } = emailCodeVerification(code);
-  await envoyerEmail(email, sujet, html);
+  const { sujet, html, texte } = emailCodeVerification(code);
+  await envoyerEmail(email, sujet, html, texte);
 }
 
 // Toujours une réponse générique côté appelant (voir api/auth.ts) : ne jamais laisser deviner si
@@ -212,8 +212,8 @@ export async function demanderReinitialisationMotDePasse(pool: Pool, emailBrut: 
     'UPDATE users SET password_reset_otp_hash = $1, password_reset_otp_expires = $2, password_reset_otp_tries = 0 WHERE id = $3',
     [hacherOtp(code), expirationOtp(), u.id]
   );
-  const { sujet, html } = emailCodeReinitialisation(code);
-  await envoyerEmail(email, sujet, html);
+  const { sujet, html, texte } = emailCodeReinitialisation(code);
+  await envoyerEmail(email, sujet, html, texte);
 }
 
 export async function reinitialiserMotDePasse(pool: Pool, emailBrut: unknown, codeBrut: unknown, nouveauMdpBrut: unknown): Promise<void> {

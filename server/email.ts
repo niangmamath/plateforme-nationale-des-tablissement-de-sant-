@@ -8,7 +8,13 @@ const RESEND_API = 'https://api.resend.com/emails';
 // Ne jamais faire échouer le flux d'authentification (inscription, connexion...) à cause d'un
 // e-mail qui ne part pas : on journalise et on continue — l'utilisateur garde la main via
 // "renvoyer le code" si l'envoi a réellement échoué.
-export async function envoyerEmail(destinataire: string, sujet: string, html: string): Promise<void> {
+//
+// `texte` (alternative en texte brut, à côté du HTML) : un e-mail purement HTML, sans partie
+// texte, est un signal que regardent la plupart des filtres anti-spam (un e-mail légitime a
+// presque toujours les deux, en multipart/alternative) — ça ne suffit pas à soi seul à éviter le
+// dossier spam (la réputation d'un domaine/expéditeur tout neuf y contribue aussi, et se construit
+// avec le temps), mais ça fait partie des signaux qu'on contrôle.
+export async function envoyerEmail(destinataire: string, sujet: string, html: string, texte: string): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.error(`RESEND_API_KEY non définie — e-mail « ${sujet} » non envoyé à ${destinataire}.`);
@@ -19,7 +25,7 @@ export async function envoyerEmail(destinataire: string, sujet: string, html: st
     const res = await fetch(RESEND_API, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to: destinataire, subject: sujet, html }),
+      body: JSON.stringify({ from, to: destinataire, subject: sujet, html, text: texte }),
     });
     if (!res.ok) {
       const corps = await res.text().catch(() => '');
@@ -81,16 +87,17 @@ function boiteCode(code: string): string {
     </table>`;
 }
 
-export function emailCodeVerification(code: string): { sujet: string; html: string } {
+export function emailCodeVerification(code: string): { sujet: string; html: string; texte: string } {
   const contenu = `
     <h1 style="margin:0 0 4px;font-size:21px;color:#0f172a;">Confirmez votre adresse e-mail</h1>
     <p style="margin:0 0 4px;font-size:14px;color:#475569;line-height:1.6;">Plus qu'une étape avant de pouvoir sauvegarder votre business plan et le reprendre à votre rythme.</p>
     ${boiteCode(code)}
     <p style="margin:0;font-size:13px;color:#64748b;line-height:1.6;">Ce code expire dans <strong>15 minutes</strong>. Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet e-mail — rien ne sera activé.</p>`;
-  return { sujet: 'Votre code de vérification Empower Doctor', html: enveloppe('📧', contenu) };
+  const texte = `Confirmez votre adresse e-mail\n\nVotre code de vérification : ${code}\n\nCe code expire dans 15 minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail.\n\n— Empower Doctor`;
+  return { sujet: 'Votre code de vérification Empower Doctor', html: enveloppe('📧', contenu), texte };
 }
 
-export function emailBienvenue(): { sujet: string; html: string } {
+export function emailBienvenue(): { sujet: string; html: string; texte: string } {
   const url = process.env.APP_PUBLIC_URL || 'https://empower-doctor.vercel.app';
   const contenu = `
     <h1 style="margin:0 0 4px;font-size:22px;color:#0f172a;">Bienvenue à bord 🎉</h1>
@@ -101,14 +108,16 @@ export function emailBienvenue(): { sujet: string; html: string } {
       </td></tr>
     </table>
     <p style="margin:0;font-size:13px;color:#94a3b8;line-height:1.6;">À très vite sur la plateforme.</p>`;
-  return { sujet: 'Bienvenue sur Empower Doctor', html: enveloppe('🎉', contenu) };
+  const texte = `Bienvenue à bord !\n\nVotre adresse est confirmée et votre compte est prêt. Remplissez votre business plan en plusieurs fois si besoin — chaque étape est sauvegardée automatiquement.\n\nOuvrir Empower Doctor : ${url}\n\n— Empower Doctor`;
+  return { sujet: 'Bienvenue sur Empower Doctor', html: enveloppe('🎉', contenu), texte };
 }
 
-export function emailCodeReinitialisation(code: string): { sujet: string; html: string } {
+export function emailCodeReinitialisation(code: string): { sujet: string; html: string; texte: string } {
   const contenu = `
     <h1 style="margin:0 0 4px;font-size:21px;color:#0f172a;">Réinitialisation de mot de passe</h1>
     <p style="margin:0 0 4px;font-size:14px;color:#475569;line-height:1.6;">Utilisez ce code pour choisir un nouveau mot de passe.</p>
     ${boiteCode(code)}
     <p style="margin:0;font-size:13px;color:#64748b;line-height:1.6;">Ce code expire dans <strong>15 minutes</strong>. Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail — votre mot de passe actuel reste inchangé.</p>`;
-  return { sujet: 'Réinitialisation de votre mot de passe — Empower Doctor', html: enveloppe('🔒', contenu) };
+  const texte = `Réinitialisation de mot de passe\n\nVotre code : ${code}\n\nCe code expire dans 15 minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail — votre mot de passe actuel reste inchangé.\n\n— Empower Doctor`;
+  return { sujet: 'Réinitialisation de votre mot de passe — Empower Doctor', html: enveloppe('🔒', contenu), texte };
 }
