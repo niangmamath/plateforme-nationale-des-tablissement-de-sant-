@@ -298,7 +298,11 @@ export async function connecterAvecGoogle(pool: Pool, idToken: unknown): Promise
   );
 
   if (rows.length > 0) {
-    await pool.query('UPDATE users SET google_sub = $1 WHERE id = $2', [sub, rows[0].id]);
+    // email_verified = true ici aussi : Google vient de prouver la possession de l'adresse, un
+    // signal au moins aussi fort que notre propre code OTP — sans ça, un compte créé par
+    // formulaire puis lié à Google restait bloqué "non vérifié" pour toute future connexion par
+    // mot de passe, alors que Google avait déjà confirmé l'e-mail.
+    await pool.query('UPDATE users SET google_sub = $1, email_verified = true WHERE id = $2', [sub, rows[0].id]);
     return { id: rows[0].id, email };
   }
 
