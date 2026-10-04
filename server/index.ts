@@ -112,67 +112,59 @@ app.post('/api/signalements', async (req, res) => {
 });
 
 // Comptes utilisateur (nécessaires pour sauvegarder/restaurer un brouillon de business plan —
-// voir server/auth.ts). Mêmes routes que api/auth/*.ts côté Vercel.
-app.post('/api/auth/signup', async (req, res) => {
-  try {
-    const { email, password } = req.body ?? {};
-    const utilisateur = await inscrire(pool, email, password);
-    res.setHeader('Set-Cookie', cookieSession(creerJeton(utilisateur)));
-    res.status(201).json(utilisateur);
-  } catch (err: any) {
-    if (err instanceof ErreurAuth) {
-      res.status(err.status).json({ error: err.message });
-      return;
-    }
-    console.error('Erreur /api/auth/signup :', err);
-    res.status(500).json({ error: 'Erreur serveur, réessayez plus tard.' });
-  }
-});
-
-app.post('/api/auth/login', async (req, res) => {
-  try {
-    const { email, password } = req.body ?? {};
-    const utilisateur = await connecter(pool, email, password);
-    res.setHeader('Set-Cookie', cookieSession(creerJeton(utilisateur)));
-    res.status(200).json(utilisateur);
-  } catch (err: any) {
-    if (err instanceof ErreurAuth) {
-      res.status(err.status).json({ error: err.message });
-      return;
-    }
-    console.error('Erreur /api/auth/login :', err);
-    res.status(500).json({ error: 'Erreur serveur, réessayez plus tard.' });
-  }
-});
-
-app.post('/api/auth/google', async (req, res) => {
-  try {
-    const { idToken } = req.body ?? {};
-    const utilisateur = await connecterAvecGoogle(pool, idToken);
-    res.setHeader('Set-Cookie', cookieSession(creerJeton(utilisateur)));
-    res.status(200).json(utilisateur);
-  } catch (err: any) {
-    if (err instanceof ErreurAuth) {
-      res.status(err.status).json({ error: err.message });
-      return;
-    }
-    console.error('Erreur /api/auth/google :', err);
-    res.status(500).json({ error: 'Erreur serveur, réessayez plus tard.' });
-  }
-});
-
-app.post('/api/auth/logout', (_req, res) => {
-  res.setHeader('Set-Cookie', cookieDeconnexion());
-  res.status(200).json({ ok: true });
-});
-
-app.get('/api/auth/me', (req, res) => {
+// voir server/auth.ts). Un seul chemin /api/auth (GET = utilisateur courant, POST dispatch sur
+// body.action) plutôt que 5 routes séparées, pour rester en miroir exact de api/auth.ts côté
+// Vercel (regroupé là-bas pour rester sous la limite de 12 fonctions serverless du plan Hobby).
+app.get('/api/auth', (req, res) => {
   const utilisateur = utilisateurDepuisCookies(req.headers.cookie);
   if (!utilisateur) {
     res.status(401).json({ error: 'Non connecté.' });
     return;
   }
   res.status(200).json(utilisateur);
+});
+
+app.post('/api/auth', async (req, res) => {
+  const { action } = req.body ?? {};
+  try {
+    switch (action) {
+      case 'signup': {
+        const { email, password } = req.body;
+        const utilisateur = await inscrire(pool, email, password);
+        res.setHeader('Set-Cookie', cookieSession(creerJeton(utilisateur)));
+        res.status(201).json(utilisateur);
+        return;
+      }
+      case 'login': {
+        const { email, password } = req.body;
+        const utilisateur = await connecter(pool, email, password);
+        res.setHeader('Set-Cookie', cookieSession(creerJeton(utilisateur)));
+        res.status(200).json(utilisateur);
+        return;
+      }
+      case 'google': {
+        const { idToken } = req.body;
+        const utilisateur = await connecterAvecGoogle(pool, idToken);
+        res.setHeader('Set-Cookie', cookieSession(creerJeton(utilisateur)));
+        res.status(200).json(utilisateur);
+        return;
+      }
+      case 'logout': {
+        res.setHeader('Set-Cookie', cookieDeconnexion());
+        res.status(200).json({ ok: true });
+        return;
+      }
+      default:
+        res.status(400).json({ error: 'Action inconnue.' });
+    }
+  } catch (err: any) {
+    if (err instanceof ErreurAuth) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    console.error('Erreur /api/auth :', err);
+    res.status(500).json({ error: 'Erreur serveur, réessayez plus tard.' });
+  }
 });
 
 // Brouillon de business plan (un par utilisateur/zone/spécialité) — voir server/businessPlanDrafts.ts.

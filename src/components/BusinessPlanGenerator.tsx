@@ -291,13 +291,16 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
   const [etatBrouillon, setEtatBrouillon] = useState<'chargement' | 'restaure' | 'vide' | 'sauvegarde' | 'sauvegarde_ok' | 'erreur'>('chargement');
   // true une fois le chargement initial terminé : la sauvegarde auto ne doit démarrer qu'à partir
   // de là, sinon la restauration elle-même (qui passe par les mêmes setters que la saisie)
-  // déclencherait une sauvegarde qui écraserait un brouillon par les données qu'on vient d'en tirer
-  // (sans effet pervers ici, mais aussi par les anciennes valeurs par défaut le temps du aller-retour réseau).
-  const brouillonChargeRef = useRef(false);
+  // déclencherait une sauvegarde qui écraserait un brouillon par les anciennes valeurs par défaut
+  // le temps de l'aller-retour réseau. Un état (pas une ref) : si l'utilisateur tape pendant que
+  // le chargement est encore en cours, l'effet de sauvegarde (gardé par cette valeur) doit se
+  // redéclencher dès qu'elle passe à true, pour rattraper la saisie déjà faite entre-temps — une
+  // ref ne l'aurait pas fait puisque la changer ne redéclenche aucun effet.
+  const [brouillonCharge, setBrouillonCharge] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !zoneId || !specialiteId) return;
-    brouillonChargeRef.current = false;
+    setBrouillonCharge(false);
     setEtatBrouillon('chargement');
     fetch(`/api/business-plan-draft?zoneId=${encodeURIComponent(zoneId)}&specialiteId=${encodeURIComponent(specialiteId)}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
@@ -310,12 +313,12 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
         }
       })
       .catch(() => setEtatBrouillon('erreur'))
-      .finally(() => { brouillonChargeRef.current = true; });
+      .finally(() => setBrouillonCharge(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, zoneId, specialiteId]);
 
   useEffect(() => {
-    if (!isOpen || !zoneId || !specialiteId || !brouillonChargeRef.current) return;
+    if (!isOpen || !zoneId || !specialiteId || !brouillonCharge) return;
     setEtatBrouillon('sauvegarde');
     const minuteur = setTimeout(() => {
       fetch('/api/business-plan-draft', {
@@ -330,7 +333,7 @@ export default function BusinessPlanGenerator({ isOpen, onClose, area, config, v
     return () => clearTimeout(minuteur);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    isOpen, zoneId, specialiteId,
+    isOpen, zoneId, specialiteId, brouillonCharge,
     surface, typeOccupation, amenagements, effectifs,
     titrePerso, sousTitrePerso,
     adresseCabinet, denominationSociale, formeJuridique, promoteurNom, titrePromoteur, adressePromoteur,

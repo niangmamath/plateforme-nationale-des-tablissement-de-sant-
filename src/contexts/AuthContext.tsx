@@ -16,12 +16,14 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function appelerJson(url: string, body: unknown): Promise<any> {
-  const res = await fetch(url, {
+// Une seule route /api/auth (GET = utilisateur courant, POST { action, ... } pour le reste) —
+// voir api/auth.ts pour pourquoi (limite de fonctions serverless sur le plan Hobby de Vercel).
+async function appelerAuth(action: string, body?: Record<string, unknown>): Promise<any> {
+  const res = await fetch('/api/auth', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify(body),
+    body: JSON.stringify({ action, ...body }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || "Une erreur est survenue.");
@@ -33,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [chargement, setChargement] = useState(true);
 
   useEffect(() => {
-    fetch('/api/auth/me', { credentials: 'include' })
+    fetch('/api/auth', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
       .then((u) => setUtilisateur(u))
       .catch(() => setUtilisateur(null))
@@ -41,22 +43,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const inscrireFn = useCallback(async (email: string, motDePasse: string) => {
-    const u = await appelerJson('/api/auth/signup', { email, password: motDePasse });
+    const u = await appelerAuth('signup', { email, password: motDePasse });
     setUtilisateur(u);
   }, []);
 
   const connecterFn = useCallback(async (email: string, motDePasse: string) => {
-    const u = await appelerJson('/api/auth/login', { email, password: motDePasse });
+    const u = await appelerAuth('login', { email, password: motDePasse });
     setUtilisateur(u);
   }, []);
 
   const connecterAvecGoogleFn = useCallback(async (idToken: string) => {
-    const u = await appelerJson('/api/auth/google', { idToken });
+    const u = await appelerAuth('google', { idToken });
     setUtilisateur(u);
   }, []);
 
   const deconnecterFn = useCallback(async () => {
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    await appelerAuth('logout');
     setUtilisateur(null);
   }, []);
 
