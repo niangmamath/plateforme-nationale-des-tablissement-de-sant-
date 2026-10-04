@@ -14,6 +14,7 @@ interface FilterSectionProps {
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
   categories: string[];
   sources: string[];
+  quartiers: string[];
   countries: PaysGeo[];
   selectedCountry: PaysGeo;
   selectedCity: VilleGeo | null;
@@ -27,6 +28,7 @@ export default function FilterSection({
   setFilters,
   categories,
   sources,
+  quartiers,
   countries,
   selectedCountry,
   selectedCity,
@@ -39,7 +41,7 @@ export default function FilterSection({
     setFilters(prev => ({ ...prev, search: e.target.value }));
   };
 
-  const handleSelectChange = (field: 'source', value: string) => {
+  const handleSelectChange = (field: 'source' | 'quartier', value: string) => {
     setFilters(prev => ({ ...prev, [field]: value }));
   };
 
@@ -116,7 +118,7 @@ export default function FilterSection({
         </div>
 
         {/* Dropdowns */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
 
           {/* Pays filter */}
           <div className="relative">
@@ -146,6 +148,25 @@ export default function FilterSection({
             >
               <option value={TOUTES_LES_VILLES}>Toutes les villes</option>
               {selectedCountry.villes.map(v => <option key={v.id} value={v.id}>{v.nom}</option>)}
+            </select>
+          </div>
+
+          {/* Zone (quartier) filter — scopée à la ville sélectionnée quand il y en a une (sinon à
+              tout le pays), comme Catégorie/Source : les noms de zones ne se recoupent pas entre
+              villes en pratique (vérifié sur les données réelles), pas besoin d'imposer une ville
+              au préalable. */}
+          <div className="relative">
+            <label htmlFor="filter-zone" className="block text-[10px] uppercase font-black tracking-widest text-slate-400 mb-1.5 flex items-center gap-1">
+              <MapPin className="h-3 w-3 text-blue-500" /> ZONE
+            </label>
+            <select
+              id="filter-zone"
+              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-slate-800 focus:ring-4 focus:ring-slate-900/5 transition-all text-xs font-bold cursor-pointer"
+              value={filters.quartier}
+              onChange={(e) => handleSelectChange('quartier', e.target.value)}
+            >
+              <option value="">Toutes les zones</option>
+              {quartiers.map(q => <option key={q} value={q}>{q}</option>)}
             </select>
           </div>
 

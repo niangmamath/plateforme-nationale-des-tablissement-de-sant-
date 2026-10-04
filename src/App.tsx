@@ -111,13 +111,12 @@ export default function App() {
     return Array.from(new Set(scopedEstablishments.map(e => e.source))).sort();
   }, [scopedEstablishments]);
 
-  // Compute neighborhoods conditioned on selected city
+  // Zones disponibles dans le périmètre actuel (scopedEstablishments est déjà filtré par ville/pays
+  // sélectionnés) — les chaînes vides sont exclues (72 fiches importées sans quartier renseigné,
+  // voir migration 030).
   const uniqueQuartiers = useMemo(() => {
-    if (!filters.ville) {
-      return Array.from(new Set(scopedEstablishments.map(e => e.quartier))).sort();
-    }
-    return Array.from(new Set(scopedEstablishments.filter(e => e.ville === filters.ville).map(e => e.quartier))).sort();
-  }, [scopedEstablishments, filters.ville]);
+    return Array.from(new Set(scopedEstablishments.map(e => e.quartier).filter(Boolean))).sort();
+  }, [scopedEstablishments]);
 
   // Filter the list of establishments based on FilterState
   const filteredEstablishments = useMemo(() => {
@@ -263,6 +262,7 @@ export default function App() {
             setFilters={setFilters}
             categories={uniqueCategories}
             sources={uniqueSources}
+            quartiers={uniqueQuartiers}
             countries={countries}
             selectedCountry={selectedCountry}
             selectedCity={selectedCity}
