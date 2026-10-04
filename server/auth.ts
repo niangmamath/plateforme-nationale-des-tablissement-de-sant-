@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { serialize, parse } from 'cookie';
+import { OAuth2Client } from 'google-auth-library';
 import type { Pool } from 'pg';
 
 export class ErreurAuth extends Error {
@@ -60,17 +61,78 @@ export async function connecter(pool: Pool, emailBrut: unknown, mdpBrut: unknown
   const email = normaliserEmail(emailBrut);
   const motDePasse = validerMotDePasse(mdpBrut);
 
-  const { rows } = await pool.query<{ id: number; password_hash: string }>(
+  const { rows } = await pool.query<{ id: number; password_hash: string | null }>(
     'SELECT id, password_hash FROM users WHERE email = $1',
     [email]
   );
   // Même message que « mot de passe incorrect » : ne pas révéler si l'email existe en base.
   if (rows.length === 0) throw new ErreurAuth(401, 'E-mail ou mot de passe incorrect.');
 
+  // Compte créé via Google, sans mot de passe défini.
+  if (!rows[0].password_hash) {
+    throw new ErreurAuth(400, 'Ce compte a été créé avec Google — connectez-vous avec le bouton Google.');
+  }
+
   const valide = await bcrypt.compare(motDePasse, rows[0].password_hash);
   if (!valide) throw new ErreurAuth(401, 'E-mail ou mot de passe incorrect.');
 
   return { id: rows[0].id, email };
+}
+
+let clientGoogle: OAuth2Client | undefined;
+function clientIdGoogle(): string {
+  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+  if (!clientId) throw new ErreurAuth(500, 'GOOGLE_OAUTH_CLIENT_ID non définie côté serveur.');
+  return clientId;
+}
+
+// `idToken` vient du bouton "Se connecter avec Google" (Google Identity Services) côté client —
+// un JWT signé par Google, jamais le mot de passe ou un jeton d'accès. On le revérifie ici (ne
+// jamais faire confiance à un email envoyé tel quel par le front) : signature Google valide,
+// audience = notre client id, émetteur Google, non expiré.
+export async function connecterAvecGoogle(pool: Pool, idToken: unknown): Promise<UtilisateurPublic> {
+  if (typeof idToken !== 'string' || !idToken) {
+    throw new ErreurAuth(400, 'Jeton Google manquant.');
+  }
+
+  const clientId = clientIdGoogle();
+  if (!clientGoogle) clientGoogle = new OAuth2Client(clientId);
+
+  let payload;
+  try {
+    const ticket = await clientGoogle.verifyIdToken({ idToken, audience: clientId });
+    payload = ticket.getPayload();
+  } catch {
+    throw new ErreurAuth(401, 'Jeton Google invalide ou expiré.');
+  }
+  if (!payload?.email || !payload.sub) {
+    throw new ErreurAuth(401, 'Jeton Google invalide.');
+  }
+  if (!payload.email_verified) {
+    throw new ErreurAuth(401, 'E-mail Google non vérifié.');
+  }
+
+  const email = payload.email.toLowerCase();
+  const sub = payload.sub;
+
+  // Retrouver par google_sub d'abord (stable même si l'email Google change), puis par email
+  // (compte déjà créé par mot de passe avec la même adresse — on le lie à Google plutôt que de
+  // créer un doublon).
+  const { rows } = await pool.query<{ id: number }>(
+    'SELECT id FROM users WHERE google_sub = $1 OR email = $2 LIMIT 1',
+    [sub, email]
+  );
+
+  if (rows.length > 0) {
+    await pool.query('UPDATE users SET google_sub = $1 WHERE id = $2', [sub, rows[0].id]);
+    return { id: rows[0].id, email };
+  }
+
+  const inserted = await pool.query<{ id: number }>(
+    'INSERT INTO users (email, google_sub) VALUES ($1, $2) RETURNING id',
+    [email, sub]
+  );
+  return { id: inserted.rows[0].id, email };
 }
 
 export function creerJeton(utilisateur: UtilisateurPublic): string {

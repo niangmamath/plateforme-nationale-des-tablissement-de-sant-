@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, LogIn, UserPlus, Loader2 } from 'lucide-react';
@@ -13,8 +13,59 @@ interface AuthModalProps {
   onSucces?: () => void;
 }
 
+// Chargée une seule fois pour toute la session (plusieurs ouvertures de la modale ne doivent pas
+// réinjecter le script ni perdre le cache navigateur dessus).
+let chargementScriptGoogle: Promise<void> | null = null;
+function chargerScriptGoogle(): Promise<void> {
+  if (chargementScriptGoogle) return chargementScriptGoogle;
+  chargementScriptGoogle = new Promise((resolve, reject) => {
+    if ((window as any).google?.accounts?.id) { resolve(); return; }
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Impossible de charger Google Sign-In.'));
+    document.head.appendChild(script);
+  });
+  return chargementScriptGoogle;
+}
+
+// Bouton "Se connecter avec Google" (Google Identity Services) : rendu délégué à Google
+// lui-même (impossible à construire à la main dans son propre style sans violer les règles de
+// marque Google), on lui fournit juste un conteneur et un callback qui reçoit le jeton d'identité
+// à vérifier côté serveur (voir server/auth.ts :: connecterAvecGoogle).
+function BoutonGoogle({ onCredential }: { onCredential: (idToken: string) => void }) {
+  const conteneurRef = useRef<HTMLDivElement>(null);
+  const [indisponible, setIndisponible] = useState(false);
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+
+  useEffect(() => {
+    if (!clientId) { setIndisponible(true); return; }
+    let annule = false;
+    chargerScriptGoogle()
+      .then(() => {
+        if (annule || !conteneurRef.current) return;
+        const google = (window as any).google;
+        google.accounts.id.initialize({
+          client_id: clientId,
+          callback: (reponse: { credential: string }) => onCredential(reponse.credential),
+        });
+        google.accounts.id.renderButton(conteneurRef.current, {
+          type: 'standard', theme: 'outline', size: 'large', width: 296, text: 'continue_with',
+        });
+      })
+      .catch(() => setIndisponible(true));
+    return () => { annule = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId]);
+
+  if (indisponible) return null;
+  return <div ref={conteneurRef} className="flex justify-center" />;
+}
+
 export default function AuthModal({ isOpen, onClose, onSucces }: AuthModalProps) {
-  const { inscrire, connecter } = useAuth();
+  const { inscrire, connecter, connecterAvecGoogle } = useAuth();
   const [mode, setMode] = useState<'connexion' | 'inscription'>('connexion');
   const [email, setEmail] = useState('');
   const [motDePasse, setMotDePasse] = useState('');
@@ -23,6 +74,13 @@ export default function AuthModal({ isOpen, onClose, onSucces }: AuthModalProps)
 
   if (!isOpen) return null;
 
+  const terminerAvecSucces = () => {
+    setEmail('');
+    setMotDePasse('');
+    onSucces?.();
+    onClose();
+  };
+
   const soumettre = async (e: React.FormEvent) => {
     e.preventDefault();
     setErreur('');
@@ -30,10 +88,20 @@ export default function AuthModal({ isOpen, onClose, onSucces }: AuthModalProps)
     try {
       if (mode === 'inscription') await inscrire(email, motDePasse);
       else await connecter(email, motDePasse);
-      setEmail('');
-      setMotDePasse('');
-      onSucces?.();
-      onClose();
+      terminerAvecSucces();
+    } catch (err: any) {
+      setErreur(err.message || 'Une erreur est survenue.');
+    } finally {
+      setEnCours(false);
+    }
+  };
+
+  const avecGoogle = async (idToken: string) => {
+    setErreur('');
+    setEnCours(true);
+    try {
+      await connecterAvecGoogle(idToken);
+      terminerAvecSucces();
     } catch (err: any) {
       setErreur(err.message || 'Une erreur est survenue.');
     } finally {
@@ -55,6 +123,16 @@ export default function AuthModal({ isOpen, onClose, onSucces }: AuthModalProps)
           <p className="text-xs text-slate-500 mb-5">
             Nécessaire pour sauvegarder votre business plan et le reprendre plus tard, à votre rythme.
           </p>
+
+          <div className="mb-4">
+            <BoutonGoogle onCredential={avecGoogle} />
+          </div>
+
+          <div className="flex items-center gap-3 mb-4">
+            <div className="h-px flex-1 bg-slate-200" />
+            <span className="text-[10px] font-bold uppercase text-slate-400">ou avec un e-mail</span>
+            <div className="h-px flex-1 bg-slate-200" />
+          </div>
 
           <form onSubmit={soumettre} className="space-y-3">
             <div>

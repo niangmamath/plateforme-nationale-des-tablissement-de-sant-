@@ -10,6 +10,7 @@ interface AuthContextValue {
   chargement: boolean;
   inscrire: (email: string, motDePasse: string) => Promise<void>;
   connecter: (email: string, motDePasse: string) => Promise<void>;
+  connecterAvecGoogle: (idToken: string) => Promise<void>;
   deconnecter: () => Promise<void>;
 }
 
@@ -49,13 +50,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUtilisateur(u);
   }, []);
 
+  const connecterAvecGoogleFn = useCallback(async (idToken: string) => {
+    const u = await appelerJson('/api/auth/google', { idToken });
+    setUtilisateur(u);
+  }, []);
+
   const deconnecterFn = useCallback(async () => {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     setUtilisateur(null);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ utilisateur, chargement, inscrire: inscrireFn, connecter: connecterFn, deconnecter: deconnecterFn }}>
+    <AuthContext.Provider value={{ utilisateur, chargement, inscrire: inscrireFn, connecter: connecterFn, connecterAvecGoogle: connecterAvecGoogleFn, deconnecter: deconnecterFn }}>
       {children}
     </AuthContext.Provider>
   );

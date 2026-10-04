@@ -6,7 +6,7 @@ import { extraireEtInserer } from './extraction';
 import { extraireEtInsererZone } from './demographie';
 import { repondre, ErreurChat, type MessageChat } from './chat';
 import { enregistrerSignalement, extraireIp, ErreurSignalement } from './signalements';
-import { inscrire, connecter, creerJeton, cookieSession, cookieDeconnexion, utilisateurDepuisCookies, ErreurAuth } from './auth';
+import { inscrire, connecter, connecterAvecGoogle, creerJeton, cookieSession, cookieDeconnexion, utilisateurDepuisCookies, ErreurAuth } from './auth';
 import { sauvegarderBrouillon, recupererBrouillon, ErreurBrouillon } from './businessPlanDrafts';
 
 const app = express();
@@ -141,6 +141,22 @@ app.post('/api/auth/login', async (req, res) => {
       return;
     }
     console.error('Erreur /api/auth/login :', err);
+    res.status(500).json({ error: 'Erreur serveur, réessayez plus tard.' });
+  }
+});
+
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    const { idToken } = req.body ?? {};
+    const utilisateur = await connecterAvecGoogle(pool, idToken);
+    res.setHeader('Set-Cookie', cookieSession(creerJeton(utilisateur)));
+    res.status(200).json(utilisateur);
+  } catch (err: any) {
+    if (err instanceof ErreurAuth) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    console.error('Erreur /api/auth/google :', err);
     res.status(500).json({ error: 'Erreur serveur, réessayez plus tard.' });
   }
 });
