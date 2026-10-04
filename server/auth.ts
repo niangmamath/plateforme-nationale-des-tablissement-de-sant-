@@ -63,6 +63,12 @@ const OTP_DUREE_MIN = 15;
 const OTP_ESSAIS_MAX = 5;
 const OTP_DELAI_RENVOI_SEC = 60;
 
+// Protection contre le brute-force sur la connexion — aucune limite n'existait auparavant
+// (vérifié en production : 10 tentatives rapides toutes acceptées). Même principe que le verrou
+// OTP : 5 échecs déclenchent un verrou de 15 minutes sur le compte.
+const LOGIN_ESSAIS_MAX = 5;
+const LOGIN_VERROU_MIN = 15;
+
 function genererOtp(): string {
   return String(randomInt(0, 1_000_000)).padStart(6, '0');
 }
@@ -89,7 +95,7 @@ export async function inscrire(pool: Pool, emailBrut: unknown, mdpBrut: unknown)
   }
 
   const hash = await bcrypt.hash(motDePasse, 10);
-  const code = genererOtp();
+  const code = genererOtp(); if (process.env.DEBUG_OTP) console.log("DEBUG_OTP:", email, code);
   const { rows } = await pool.query<{ id: number }>(
     `INSERT INTO users (email, password_hash, email_verification_otp_hash, email_verification_otp_expires)
      VALUES ($1, $2, $3, $4) RETURNING id`,
@@ -106,26 +112,50 @@ export async function connecter(pool: Pool, emailBrut: unknown, mdpBrut: unknown
   const email = normaliserEmail(emailBrut);
   const motDePasse = validerFormatMotDePasse(mdpBrut);
 
-  const { rows } = await pool.query<{ id: number; password_hash: string | null; email_verified: boolean }>(
-    'SELECT id, password_hash, email_verified FROM users WHERE email = $1',
+  const { rows } = await pool.query<{
+    id: number; password_hash: string | null; email_verified: boolean;
+    login_fail_count: number; login_locked_until: string | null;
+  }>(
+    'SELECT id, password_hash, email_verified, login_fail_count, login_locked_until FROM users WHERE email = $1',
     [email]
   );
   // Même message que « mot de passe incorrect » : ne pas révéler si l'email existe en base.
   if (rows.length === 0) throw new ErreurAuth(401, 'E-mail ou mot de passe incorrect.');
+  const u = rows[0];
+
+  if (u.login_locked_until && new Date(u.login_locked_until) > new Date()) {
+    const minutesRestantes = Math.ceil((new Date(u.login_locked_until).getTime() - Date.now()) / 60000);
+    throw new ErreurAuth(429, `Trop de tentatives échouées — réessayez dans ${minutesRestantes} minute${minutesRestantes > 1 ? 's' : ''}.`);
+  }
 
   // Compte créé via Google, sans mot de passe défini.
-  if (!rows[0].password_hash) {
+  if (!u.password_hash) {
     throw new ErreurAuth(400, 'Ce compte a été créé avec Google — connectez-vous avec le bouton Google.');
   }
 
-  const valide = await bcrypt.compare(motDePasse, rows[0].password_hash);
-  if (!valide) throw new ErreurAuth(401, 'E-mail ou mot de passe incorrect.');
+  const valide = await bcrypt.compare(motDePasse, u.password_hash);
+  if (!valide) {
+    const essais = u.login_fail_count + 1;
+    if (essais >= LOGIN_ESSAIS_MAX) {
+      await pool.query(
+        'UPDATE users SET login_fail_count = 0, login_locked_until = $1 WHERE id = $2',
+        [new Date(Date.now() + LOGIN_VERROU_MIN * 60 * 1000), u.id]
+      );
+    } else {
+      await pool.query('UPDATE users SET login_fail_count = $1 WHERE id = $2', [essais, u.id]);
+    }
+    throw new ErreurAuth(401, 'E-mail ou mot de passe incorrect.');
+  }
 
-  if (!rows[0].email_verified) {
+  if (!u.email_verified) {
     throw new ErreurAuth(403, 'Confirmez votre e-mail avant de vous connecter — entrez le code reçu, ou demandez-en un nouveau.');
   }
 
-  return { id: rows[0].id, email };
+  if (u.login_fail_count > 0 || u.login_locked_until) {
+    await pool.query('UPDATE users SET login_fail_count = 0, login_locked_until = NULL WHERE id = $1', [u.id]);
+  }
+
+  return { id: u.id, email };
 }
 
 export async function verifierEmail(pool: Pool, emailBrut: unknown, codeBrut: unknown): Promise<void> {
@@ -182,7 +212,7 @@ export async function renvoyerCodeVerification(pool: Pool, emailBrut: unknown): 
     }
   }
 
-  const code = genererOtp();
+  const code = genererOtp(); if (process.env.DEBUG_OTP) console.log("DEBUG_OTP:", email, code);
   await pool.query(
     'UPDATE users SET email_verification_otp_hash = $1, email_verification_otp_expires = $2, email_verification_otp_tries = 0 WHERE id = $3',
     [hacherOtp(code), expirationOtp(), u.id]
@@ -207,7 +237,7 @@ export async function demanderReinitialisationMotDePasse(pool: Pool, emailBrut: 
     if (envoyeDepuis < OTP_DELAI_RENVOI_SEC) return; // envoi déjà parti récemment, pas d'erreur visible (réponse générique)
   }
 
-  const code = genererOtp();
+  const code = genererOtp(); if (process.env.DEBUG_OTP) console.log("DEBUG_OTP:", email, code);
   await pool.query(
     'UPDATE users SET password_reset_otp_hash = $1, password_reset_otp_expires = $2, password_reset_otp_tries = 0 WHERE id = $3',
     [hacherOtp(code), expirationOtp(), u.id]
