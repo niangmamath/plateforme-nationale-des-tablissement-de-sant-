@@ -290,6 +290,15 @@ export const SEUIL_DOUBLON_CONFIRME = 0.75;
 // Volontairement bas : rater un doublon (insertion silencieuse) coûte plus cher que
 // sur-solliciter la relecture manuelle. En cas de doute, on préfère faire vérifier.
 export const SEUIL_INCERTAIN = 0.35;
+// Seuil minimal pour accepter un match INTER-catégories (voir chargerExistantsAutresCategories
+// dans extraction.ts) : volontairement aligné sur le palier "nom complet quasi-identique" ci-
+// dessus (0.9), jamais sur SEUIL_INCERTAIN. Constaté en prod le 2026-10-04 : avec le seuil normal,
+// un simple prénom ou patronyme partagé entre deux spécialités différentes (très fréquent avec les
+// patronymes marocains courants) donnait 211 candidats "incertain" sur 388, pour seulement
+// ~10 vrais doublons mal catégorisés — charge de relecture manuelle disproportionnée par rapport
+// au signal réel. Un médecin listé deux fois sous deux spécialités a presque toujours un nom
+// complet identique ou quasi identique, donc ce seuil resserré ne perd pas ces vrais cas.
+export const SEUIL_INCERTAIN_INTER_CATEGORIES = 0.9;
 
 export type StatutCorrespondance = 'doublon_confirme' | 'incertain' | 'nouveau';
 

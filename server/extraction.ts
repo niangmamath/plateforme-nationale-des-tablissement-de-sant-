@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { chargerExistants, chargerExistantsAutresCategories, scoreCorrespondance, classifierScore, estNomPersonnel, type FicheExistante } from './scraping/dedup';
+import { chargerExistants, chargerExistantsAutresCategories, scoreCorrespondance, classifierScore, estNomPersonnel, SEUIL_INCERTAIN_INTER_CATEGORIES, type FicheExistante } from './scraping/dedup';
 
 interface SpecialiteExtractionConfig {
   requete: string;
@@ -301,13 +301,20 @@ export async function extraireEtInserer(
     // Comparaison inter-catégories (voir chargerExistantsAutresCategories) uniquement quand le
     // candidat lui-même est un nom de personne — une clinique/labo ne doit jamais être comparée
     // à un médecin d'une autre spécialité, trop ambigu pour être tranché par nom+GPS seuls.
+    const idsAutresCategories = new Set(existantsAutresCategories.map((e) => e.id));
     const poolElargi = estNomPersonnel(c.nom) ? [...poolComparaison, ...existantsAutresCategories] : poolComparaison;
     let meilleur: FicheExistante | null = null, meilleurScore = 0;
     for (const e of poolElargi) {
       const { score } = scoreCorrespondance(e, { nom: c.nom, adresse: c.adresse, lat: c.latitude, lng: c.longitude });
       if (score > meilleurScore) { meilleurScore = score; meilleur = e; }
     }
-    const statut = classifierScore(meilleurScore);
+    // Un match dont le meilleur candidat vient du pool INTER-catégories exige un seuil beaucoup
+    // plus strict (voir SEUIL_INCERTAIN_INTER_CATEGORIES) : sinon un simple prénom/patronyme
+    // partagé entre deux spécialités différentes déclenche une fausse alerte quasi systématique.
+    const meilleurEstInterCategorie = meilleur != null && idsAutresCategories.has(meilleur.id);
+    const statut = (meilleurEstInterCategorie && meilleurScore < SEUIL_INCERTAIN_INTER_CATEGORIES)
+      ? 'nouveau'
+      : classifierScore(meilleurScore);
     classes.push({ ...c, statut, matchExistant: meilleur });
     if (statut !== 'doublon_confirme') {
       poolComparaison.push({ id: c.id, nom: c.nom, adresse: c.adresse, lat: c.latitude, lng: c.longitude });
