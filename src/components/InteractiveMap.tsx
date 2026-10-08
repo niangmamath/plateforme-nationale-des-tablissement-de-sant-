@@ -112,11 +112,15 @@ export default function InteractiveMap({
     return config;
   }, [specialites]);
 
+  // CARTO a mis son service de tuiles gratuit (basemaps.cartocdn.com) derrière une clé API début
+  // octobre 2026 — les tuiles renvoyées sans clé sont un simple visuel "API KEY REQUIRED" (HTTP 200,
+  // donc invisible pour la détection d'erreur JS). Basculé sur Esri/ArcGIS (déjà utilisé sans clé
+  // pour 'google-hybrid' ci-dessous), gratuit et sans inscription pour ce volume de trafic.
   const TILE_LAYERS = {
-    'google-streets': { url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', attribution: '&copy; OpenStreetMap contributors &copy; CARTO' },
+    'google-streets': { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ' },
     'google-hybrid': { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA...' },
-    'light-carto': { url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', attribution: '&copy; OpenStreetMap contributors &copy; CARTO' },
-    'dark-carto': { url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attribution: '&copy; OpenStreetMap contributors &copy; CARTO' }
+    'light-carto': { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', attribution: 'Tiles &copy; Esri &mdash; Source: Esri' },
+    'dark-carto': { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', attribution: 'Tiles &copy; Esri &mdash; Source: Esri' }
   };
 
   const createSvgIcon = (category: string, isSelected: boolean) => {

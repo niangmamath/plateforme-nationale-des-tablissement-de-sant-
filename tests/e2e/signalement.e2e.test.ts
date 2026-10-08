@@ -71,7 +71,15 @@ describe('Signalement utilisateur', () => {
     await driver.wait(until.elementLocated(By.css('.leaflet-marker-icon.custom-leaflet-marker')), 20000);
     const carteEl = await driver.findElement(By.id('leaflet-map-element'));
     await driver.executeScript('arguments[0].scrollIntoView({ block: "center" })', carteEl);
-    await driver.sleep(600);
+    // Casablanca ajoute ses marqueurs en un seul gros lot après un court délai (constaté : un seul
+    // marqueur présent à 600ms, ~5000 d'un coup entre 600ms et 1000ms) — un sleep fixe de 600ms
+    // tombait systématiquement dans cette fenêtre creuse, où le seul marqueur déjà là n'est pas
+    // forcément dans la zone sûre recherchée plus bas. On attend plutôt un nombre substantiel de
+    // marqueurs, condition robuste même si le délai de rendu se décale.
+    await driver.wait(
+      async () => (await driver.findElements(By.css('.leaflet-marker-icon.custom-leaflet-marker'))).length > 50,
+      15000
+    );
 
     const carte = await carteEl.getRect();
     let cible = null;

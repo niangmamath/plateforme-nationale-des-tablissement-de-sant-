@@ -28,7 +28,15 @@ export async function createDriver(): Promise<WebDriver> {
 // @vercel/analytics ne résout son script que sur l'infra Vercel réelle — un 404 dessus
 // est attendu et sans rapport avec un bug produit quand on teste un déploiement local
 // (dev server, `vite preview`, preview Vercel non concerné) ; on l'ignore explicitement.
-const BRUIT_CONNU = ['_vercel/insights/script.js'];
+//
+// AuthContext appelle GET /api/auth au montage pour savoir si un visiteur est déjà connecté
+// (voir src/contexts/AuthContext.tsx) — un 401 est la réponse normale et attendue tant qu'aucun
+// compte de test n'est connecté dans la session Selenium, pas un bug produit. Sans ce filtre,
+// pratiquement tous les tests e2e échouaient sur cette seule ligne.
+const BRUIT_CONNU = [
+  '_vercel/insights/script.js',
+  '/api/auth - Failed to load resource: the server responded with a status of 401',
+];
 
 /** Erreurs JS levées côté navigateur pendant le test (console.error / exceptions non catchées). */
 export async function getSevereBrowserErrors(driver: WebDriver): Promise<string[]> {
