@@ -9,6 +9,11 @@ import { FilterState, PaysGeo, VilleGeo } from '../types';
 
 const TOUTES_LES_VILLES = '__all__';
 
+// Désactivé temporairement : des zones héritées d'un ancien import ne correspondent pas aux
+// limites officielles (ex. "Ain Diab" regroupait des fiches à l'autre bout de Casablanca) —
+// masqué le temps de finir le nettoyage des données, pas une suppression définitive.
+const ZONE_FILTER_VISIBLE = false;
+
 interface FilterSectionProps {
   filters: FilterState;
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
@@ -118,7 +123,7 @@ export default function FilterSection({
         </div>
 
         {/* Dropdowns */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${ZONE_FILTER_VISIBLE ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
 
           {/* Pays filter */}
           <div className="relative">
@@ -154,21 +159,23 @@ export default function FilterSection({
           {/* Zone (quartier) filter — scopée à la ville sélectionnée quand il y en a une (sinon à
               tout le pays), comme Catégorie/Source : les noms de zones ne se recoupent pas entre
               villes en pratique (vérifié sur les données réelles), pas besoin d'imposer une ville
-              au préalable. */}
-          <div className="relative">
-            <label htmlFor="filter-zone" className="block text-[10px] uppercase font-black tracking-widest text-slate-400 mb-1.5 flex items-center gap-1">
-              <MapPin className="h-3 w-3 text-blue-500" /> ZONE
-            </label>
-            <select
-              id="filter-zone"
-              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-slate-800 focus:ring-4 focus:ring-slate-900/5 transition-all text-xs font-bold cursor-pointer"
-              value={filters.quartier}
-              onChange={(e) => handleSelectChange('quartier', e.target.value)}
-            >
-              <option value="">Toutes les zones</option>
-              {quartiers.map(q => <option key={q} value={q}>{q}</option>)}
-            </select>
-          </div>
+              au préalable. Masqué tant que ZONE_FILTER_VISIBLE est à false, voir plus haut. */}
+          {ZONE_FILTER_VISIBLE && (
+            <div className="relative">
+              <label htmlFor="filter-zone" className="block text-[10px] uppercase font-black tracking-widest text-slate-400 mb-1.5 flex items-center gap-1">
+                <MapPin className="h-3 w-3 text-blue-500" /> ZONE
+              </label>
+              <select
+                id="filter-zone"
+                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-slate-800 focus:ring-4 focus:ring-slate-900/5 transition-all text-xs font-bold cursor-pointer"
+                value={filters.quartier}
+                onChange={(e) => handleSelectChange('quartier', e.target.value)}
+              >
+                <option value="">Toutes les zones</option>
+                {quartiers.map(q => <option key={q} value={q}>{q}</option>)}
+              </select>
+            </div>
+          )}
 
           {/* Catégorie filter (multi-sélection) */}
           <div className="relative" ref={categorieRef}>
