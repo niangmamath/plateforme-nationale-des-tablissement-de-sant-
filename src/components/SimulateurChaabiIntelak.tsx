@@ -43,8 +43,13 @@ const PRODUITS: ProduitChaabi[] = [
   { id: 'BP_START_UP', nom: 'BP Start-Up', tauxPct: 5, montantDefaut: 100000, montantMin: 5000, montantMax: 1200000, differeDefaut: 36, differeMin: 12, differeMax: 60, dureeDefaut: 84, dureeMin: 12, dureeMax: 114 },
 ];
 
+// Masqués temporairement (données/taux à revérifier) — gardés dans PRODUITS pour ne pas perdre
+// leur configuration, juste retirés de l'onglet affiché. Repasser l'id ici à false pour réactiver.
+const PRODUITS_MASQUES = new Set(['INTELAK_AL_QARAOUI', 'BP_START_UP']);
+const PRODUITS_VISIBLES = PRODUITS.filter((p) => !PRODUITS_MASQUES.has(p.id));
+
 export default function SimulateurChaabiIntelak() {
-  const [produitId, setProduitId] = useState(PRODUITS[0].id);
+  const [produitId, setProduitId] = useState(PRODUITS_VISIBLES[0].id);
   const produit = PRODUITS.find((p) => p.id === produitId)!;
 
   const [montant, setMontant] = useState(produit.montantDefaut);
@@ -79,7 +84,7 @@ export default function SimulateurChaabiIntelak() {
 
       <div className="max-w-5xl mx-auto">
         <div className="flex flex-wrap gap-2 mb-6 justify-center">
-          {PRODUITS.map((p) => (
+          {PRODUITS_VISIBLES.map((p) => (
             <button
               key={p.id}
               type="button"
