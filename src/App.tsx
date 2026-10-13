@@ -23,7 +23,6 @@ import LoadingScreen from './components/LoadingScreen';
 // Admin dashboard : lazy-loaded. Les médecins qui n'ouvrent jamais /admin ne téléchargent pas
 // Recharts + les composants admin + toute la logique associée (~200 kB).
 const AdminShell = React.lazy(() => import('./components/admin/AdminShell'));
-const AdminActivationPage = React.lazy(() => import('./components/admin/AdminActivationPage'));
 import { Plus, Database, Info, Heart } from 'lucide-react';
 
 export default function App() {
@@ -208,13 +207,6 @@ export default function App() {
   // aucun lien avec les fetchs /api/pays, /api/etablissements etc. (qui sont pour les médecins), il
   // doit s'ouvrir même si l'un de ces endpoints est en panne. Le bundle admin est lazy-loaded :
   // le fallback Suspense affiche un écran de chargement pendant que le chunk arrive.
-  if (route === '/admin/activer') {
-    return (
-      <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-500">Chargement…</div>}>
-        <AdminActivationPage />
-      </React.Suspense>
-    );
-  }
   if (route === '/admin') {
     return (
       <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-500">Chargement…</div>}>

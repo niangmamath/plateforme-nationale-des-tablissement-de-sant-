@@ -10,7 +10,7 @@ import AdminDashboard from './AdminDashboard';
 export interface AdminMoi {
   id: number;
   email: string;
-  role: 'admin' | 'lecteur';
+  role: 'admin';
 }
 
 interface AdminAuthCtx {

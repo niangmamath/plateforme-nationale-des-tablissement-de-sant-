@@ -27,9 +27,9 @@ export async function obtenirStats(pool: Pool, section: SectionStats, role: Role
     case 'etablissements': return statsEtablissements(pool);
     case 'zones': return statsZones(pool);
     case 'specialites': return statsSpecialites(pool);
-    case 'utilisateurs': return statsUtilisateurs(pool, role);
+    case 'utilisateurs': return statsUtilisateurs(pool);
     case 'business-plans': return statsBusinessPlans(pool);
-    case 'signalements': return statsSignalements(pool, role);
+    case 'signalements': return statsSignalements(pool);
     default: throw new ErreurAdminStats(400, 'Section inconnue.');
   }
 }
@@ -136,13 +136,24 @@ async function statsOverview(pool: Pool) {
 
 // --- Établissements ---
 async function statsEtablissements(pool: Pool) {
-  const [parStatut, parCategorie, parVille, parSource, verif, doublons, parMois] = await Promise.all([
+  const [parStatut, parCategorie, parVille, parSource, aVerifier, parMois] = await Promise.all([
     pool.query<{ statut: string; n: string }>('SELECT statut, COUNT(*)::text AS n FROM etablissements GROUP BY statut'),
     pool.query<{ categorie: string; n: string }>('SELECT categorie, COUNT(*)::text AS n FROM etablissements GROUP BY categorie ORDER BY COUNT(*) DESC LIMIT 20'),
     pool.query<{ ville: string; n: string }>('SELECT ville, COUNT(*)::text AS n FROM etablissements GROUP BY ville ORDER BY COUNT(*) DESC LIMIT 15'),
-    pool.query<{ source: string; n: string }>('SELECT source, COUNT(*)::text AS n FROM etablissements GROUP BY source ORDER BY COUNT(*) DESC'),
-    pool.query<{ n: string }>('SELECT COUNT(*)::text AS n FROM etablissements WHERE verification_requise = true'),
-    pool.query<{ n: string }>('SELECT COUNT(*)::text AS n FROM etablissements WHERE doublon_possible_id IS NOT NULL'),
+    // On éclate la chaîne "DabaDoc, Doctori.ma, Med.ma" en sources individuelles pour éviter
+    // le pie illisible de ~30 combinaisons. Un établissement peut compter dans plusieurs sources.
+    pool.query<{ source: string; n: string }>(
+      `SELECT TRIM(s) AS source, COUNT(*)::text AS n
+       FROM etablissements, regexp_split_to_table(COALESCE(source, ''), '\\s*,\\s*') AS s
+       WHERE TRIM(s) <> ''
+       GROUP BY TRIM(s) ORDER BY COUNT(*) DESC`
+    ),
+    // Un établissement "à vérifier" = celui que le pipeline a flaggé (verification_requise=true)
+    // OU qu'il soupçonne d'être un doublon. Les deux cas méritent la même action côté humain :
+    // relire la fiche, décider de la publier/fusionner/supprimer. Fusionnés en un seul compteur.
+    pool.query<{ n: string }>(
+      'SELECT COUNT(*)::text AS n FROM etablissements WHERE verification_requise = true OR doublon_possible_id IS NOT NULL'
+    ),
     pool.query<{ mois: string; n: string }>(
       `SELECT to_char(date_trunc('month', date_created), 'YYYY-MM') AS mois, COUNT(*)::text AS n
        FROM etablissements
@@ -155,8 +166,7 @@ async function statsEtablissements(pool: Pool) {
     par_categorie: parCategorie.rows.map(r => ({ categorie: r.categorie, n: Number(r.n) })),
     par_ville: parVille.rows.map(r => ({ ville: r.ville, n: Number(r.n) })),
     par_source: parSource.rows.map(r => ({ source: r.source, n: Number(r.n) })),
-    verification_requise: Number(verif.rows[0].n),
-    doublons_possibles: Number(doublons.rows[0].n),
+    a_verifier: Number(aVerifier.rows[0].n),
     par_mois: parMois.rows.map(r => ({ mois: r.mois, n: Number(r.n) })),
   };
 }
@@ -338,8 +348,7 @@ async function statsSpecialites(pool: Pool) {
 }
 
 // --- Utilisateurs ---
-// Pour un lecteur : on ne renvoie que des agrégats, aucune liste nominative.
-async function statsUtilisateurs(pool: Pool, role: RoleAdmin) {
+async function statsUtilisateurs(pool: Pool) {
   const [total, parSemaine, authType, verifies, verrouilles] = await Promise.all([
     pool.query<{ n: string }>('SELECT COUNT(*)::text AS n FROM users'),
     pool.query<{ semaine: string; n: string }>(
@@ -354,23 +363,19 @@ async function statsUtilisateurs(pool: Pool, role: RoleAdmin) {
     pool.query<{ n: string }>("SELECT COUNT(*)::text AS n FROM users WHERE login_locked_until IS NOT NULL AND login_locked_until > now()"),
   ]);
 
-  const base = {
-    total: Number(total.rows[0].n),
-    par_semaine: parSemaine.rows.map(r => ({ semaine: r.semaine, n: Number(r.n) })),
-    par_type: authType.rows.map(r => ({ type: r.type, n: Number(r.n) })),
-    verifies: Number(verifies.rows[0].n),
-    verrouilles: Number(verrouilles.rows[0].n),
-  };
-
-  if (role === 'lecteur') return base;
-
-  // Pour l'admin : liste nominative récente (20 derniers).
   const { rows } = await pool.query<{ id: number; email: string; date_creation: string; email_verified: boolean; auth: string }>(
     `SELECT id, email, date_creation, email_verified,
             CASE WHEN google_sub IS NOT NULL THEN 'google' ELSE 'email' END AS auth
      FROM users ORDER BY date_creation DESC LIMIT 20`
   );
-  return { ...base, derniers: rows };
+  return {
+    total: Number(total.rows[0].n),
+    par_semaine: parSemaine.rows.map(r => ({ semaine: r.semaine, n: Number(r.n) })),
+    par_type: authType.rows.map(r => ({ type: r.type, n: Number(r.n) })),
+    verifies: Number(verifies.rows[0].n),
+    verrouilles: Number(verrouilles.rows[0].n),
+    derniers: rows,
+  };
 }
 
 // --- Business plans ---
@@ -405,7 +410,7 @@ async function statsBusinessPlans(pool: Pool) {
 }
 
 // --- Signalements ---
-async function statsSignalements(pool: Pool, role: RoleAdmin) {
+async function statsSignalements(pool: Pool) {
   const [parStatut, parType, parProbleme, parMois, delaiMoyen, parProfession] = await Promise.all([
     pool.query<{ statut: string; n: string }>('SELECT statut, COUNT(*)::text AS n FROM signalements GROUP BY statut'),
     pool.query<{ type: string; n: string }>('SELECT type, COUNT(*)::text AS n FROM signalements GROUP BY type'),
@@ -425,7 +430,7 @@ async function statsSignalements(pool: Pool, role: RoleAdmin) {
     ),
   ]);
 
-  const base = {
+  return {
     par_statut: parStatut.rows.map(r => ({ statut: r.statut, n: Number(r.n) })),
     par_type: parType.rows.map(r => ({ type: r.type, n: Number(r.n) })),
     par_probleme: parProbleme.rows.map(r => ({ type_probleme: r.type_probleme, n: Number(r.n) })),
@@ -433,13 +438,4 @@ async function statsSignalements(pool: Pool, role: RoleAdmin) {
     delai_traitement_h: delaiMoyen.rows[0].heures ? Number(delaiMoyen.rows[0].heures) : null,
     par_profession: parProfession.rows.map(r => ({ profession: r.profession, n: Number(r.n) })),
   };
-
-  if (role === 'lecteur') return base;
-
-  // Pour l'admin : liste nominative des 20 derniers signalements ouverts.
-  const { rows } = await pool.query<{ id: number; type: string; nom_prenom: string; email: string; profession: string; statut: string; date_creation: string }>(
-    `SELECT id, type, nom_prenom, email, profession, statut, date_creation
-     FROM signalements WHERE statut IN ('nouveau', 'en_cours') ORDER BY date_creation DESC LIMIT 20`
-  );
-  return { ...base, ouverts_recents: rows };
 }

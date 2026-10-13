@@ -3,8 +3,8 @@ import { getPool } from '../_lib/db.js';
 import { routerAdmin } from '../../server/adminRouter.js';
 import { ipDeRequete } from '../../server/rateLimit.js';
 
-// Un seul fichier Vercel pour toutes les actions /api/admin-ui/* (login, logout, me, activer,
-// inviter, revoquer, acces, stats) — pour tenir sous la limite de 12 fonctions serverless du
+// Un seul fichier Vercel pour toutes les actions /api/admin-ui/* (login, logout, me, password,
+// stats, signalements, messages) — pour tenir sous la limite de 12 fonctions serverless du
 // plan Hobby. Le dispatch réel est dans server/adminRouter.ts (partagé avec server/index.ts).
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // La route réelle est après "/api/admin-ui" (ex: "/login"). Sur Vercel, req.url contient aussi

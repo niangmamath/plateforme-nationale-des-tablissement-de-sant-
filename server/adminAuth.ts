@@ -7,9 +7,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { serialize, parse } from 'cookie';
-import { randomBytes, createHash } from 'crypto';
 import type { Pool } from 'pg';
-import { envoyerEmail, emailInvitationAdmin } from './email.js';
 import { RateLimit } from './rateLimit.js';
 
 export class ErreurAdminAuth extends Error {
@@ -22,7 +20,6 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const EMAIL_MAX_LONGUEUR = 254; // RFC 5321
 const COOKIE_NOM = 'admin_session';
 const DUREE_SESSION_JOURS = 6;
-const INVITATION_DUREE_JOURS = 7;
 
 // Protection brute-force par COMPTE : 5 essais → verrou 15 min (login_fail_count/login_locked_until).
 const LOGIN_ESSAIS_MAX = 5;
@@ -32,16 +29,14 @@ const LOGIN_VERROU_MIN = 15;
 // essayer 5 mdp sur chaque compte en séquence). 20 tentatives / 15 min / IP.
 export const loginAdminRateLimit = new RateLimit(20, 15 * 60 * 1000, 'login-admin');
 
-// Protection anti-spam sur /inviter : un admin dont la session serait volée pourrait sinon
-// envoyer des centaines d'invitations (coût Resend + bruit).
-export const inviterRateLimit = new RateLimit(10, 60 * 60 * 1000, 'inviter');
-
 // Hash bcrypt factice pour éviter les timing attacks : si l'email n'existe pas, on exécute quand
 // même un compare contre ce hash pour que le temps de réponse soit identique à un email existant.
 // Généré une seule fois au boot avec bcrypt.hashSync('timing-attack-decoy', 10).
 const HASH_FACTICE = '$2b$10$CwTycUXWue0Thq9StjUM0uJ8f6Yh2qkCvDxYgvD5ZcLjKxP4ZcDa6';
 
-export type RoleAdmin = 'admin' | 'lecteur';
+// Un seul rôle "admin" désormais (migration 037). Le type reste exporté pour éviter de casser les
+// imports existants dans adminStats.ts et adminRouter.ts, mais toutes les valeurs sont 'admin'.
+export type RoleAdmin = 'admin';
 
 export interface AdminPublic {
   id: number;
@@ -80,10 +75,6 @@ function validerNouveauMotDePasse(mdp: unknown): string {
   return valeur;
 }
 
-function hacherToken(token: string): string {
-  return createHash('sha256').update(token).digest('hex');
-}
-
 // --- Seed des fondateurs au démarrage du serveur ---
 // Lit ADMIN_FOUNDER_EMAILS (CSV) et ADMIN_FOUNDER_PASSWORD_1..N, apparie dans l'ordre, et insère
 // les comptes avec hash bcrypt s'ils n'existent pas déjà en base. Les mdp en clair ne quittent
@@ -105,15 +96,13 @@ export async function seedFondateurs(pool: Pool): Promise<void> {
       continue;
     }
 
-    // Si le compte existe déjà (même sans hash), on ne touche à rien : un fondateur a pu changer
-    // son mot de passe via l'UI, ou le seed précédent a déjà fait le travail.
+    // Si le compte existe déjà avec un hash, on ne touche à rien : un fondateur a pu changer son
+    // mot de passe via l'UI. Si pas de hash (premier démarrage interrompu), on complète.
     const { rows } = await pool.query<{ id: number; password_hash: string | null }>(
       'SELECT id, password_hash FROM admin_users WHERE email = $1',
       [email]
     );
     if (rows.length > 0) {
-      // Compte existant : s'il a déjà un hash, on ne touche à rien. S'il n'en a pas (cas d'un
-      // premier démarrage interrompu), on complète avec le mdp env si disponible.
       if (rows[0].password_hash) continue;
       const mdp = process.env[`ADMIN_FOUNDER_PASSWORD_${i + 1}`];
       if (!mdp) {
@@ -137,17 +126,14 @@ export async function seedFondateurs(pool: Pool): Promise<void> {
        VALUES ($1, $2, 'admin', true)`,
       [email, hash]
     );
-    // Log sans email en clair : si les logs Vercel/Render sont consultés par un tiers, on ne veut
-    // pas exposer les adresses des admins.
     console.log(`[admin] Fondateur #${i + 1} seedé.`);
   }
 }
 
 // --- Connexion ---
-// Message d'erreur TOUJOURS identique pour email inexistant, mdp faux, ou compte non activé :
-// évite l'énumération d'emails valides et l'identification des lecteurs en attente d'activation.
-// Timing : on exécute un bcrypt.compare même quand l'email n'existe pas (contre un hash factice),
-// pour que le temps de réponse ne révèle pas l'existence du compte.
+// Message d'erreur TOUJOURS identique pour email inexistant, mdp faux : évite l'énumération.
+// Timing : on exécute un bcrypt.compare même quand l'email n'existe pas (hash factice) pour
+// aligner les durées de réponse.
 export async function connecterAdmin(pool: Pool, emailBrut: unknown, mdpBrut: unknown): Promise<AdminPublic> {
   const email = normaliserEmail(emailBrut);
   const motDePasse = validerFormatMotDePasse(mdpBrut);
@@ -163,7 +149,6 @@ export async function connecterAdmin(pool: Pool, emailBrut: unknown, mdpBrut: un
   const MSG_INCORRECT = 'E-mail ou mot de passe incorrect.';
 
   if (rows.length === 0) {
-    // Dummy bcrypt pour aligner le temps de réponse avec un email existant.
     await bcrypt.compare(motDePasse, HASH_FACTICE);
     throw new ErreurAdminAuth(401, MSG_INCORRECT);
   }
@@ -175,9 +160,6 @@ export async function connecterAdmin(pool: Pool, emailBrut: unknown, mdpBrut: un
   }
 
   if (!a.password_hash) {
-    // Compte en attente d'activation (lecteur invité qui n'a pas encore cliqué son lien, ou
-    // fondateur dont le hash n'a pas pu être seedé). Message volontairement générique, mais on
-    // exécute quand même un compare factice pour aligner le timing.
     await bcrypt.compare(motDePasse, HASH_FACTICE);
     throw new ErreurAdminAuth(401, MSG_INCORRECT);
   }
@@ -200,104 +182,38 @@ export async function connecterAdmin(pool: Pool, emailBrut: unknown, mdpBrut: un
     await pool.query('UPDATE admin_users SET login_fail_count = 0, login_locked_until = NULL WHERE id = $1', [a.id]);
   }
 
-  console.log(`[admin:audit] login OK — email=${email} role=${a.role} id=${a.id}`);
+  console.log(`[admin:audit] login OK — email=${email} id=${a.id}`);
   return { id: a.id, email, role: a.role, is_founder: a.is_founder };
 }
 
-// --- Invitation d'un lecteur par un admin ---
-export async function inviterLecteur(pool: Pool, emailBrut: unknown, parAdminId: number): Promise<{ urlDebug?: string }> {
-  const email = normaliserEmail(emailBrut);
-
-  const existe = await pool.query<{ id: number }>('SELECT id FROM admin_users WHERE email = $1', [email]);
-  if (existe.rows.length > 0) {
-    throw new ErreurAdminAuth(409, 'Un compte admin ou lecteur existe déjà avec cette adresse.');
+// --- Changement de mot de passe depuis l'espace compte ---
+// Vérifie l'ancien mot de passe pour éviter qu'une session volée serve à verrouiller le compte.
+export async function changerMotDePasseAdmin(
+  pool: Pool,
+  adminId: number,
+  ancienMdp: unknown,
+  nouveauMdp: unknown,
+): Promise<void> {
+  const ancien = validerFormatMotDePasse(ancienMdp);
+  const nouveau = validerNouveauMotDePasse(nouveauMdp);
+  if (ancien === nouveau) {
+    throw new ErreurAdminAuth(400, 'Le nouveau mot de passe doit être différent de l\'ancien.');
   }
 
-  const token = randomBytes(32).toString('hex');
-  const expiration = new Date(Date.now() + INVITATION_DUREE_JOURS * 24 * 60 * 60 * 1000);
-  await pool.query(
-    `INSERT INTO admin_users (email, role, is_founder, invited_by_admin_id, invitation_token_hash, invitation_expires)
-     VALUES ($1, 'lecteur', false, $2, $3, $4)`,
-    [email, parAdminId, hacherToken(token), expiration]
+  const { rows } = await pool.query<{ password_hash: string | null }>(
+    'SELECT password_hash FROM admin_users WHERE id = $1',
+    [adminId],
   );
-
-  const baseUrl = process.env.APP_PUBLIC_URL || 'http://localhost:5174';
-  const url = `${baseUrl}/admin/activer?token=${token}`;
-
-  const { sujet, html, texte } = emailInvitationAdmin(url);
-  await envoyerEmail(email, sujet, html, texte);
-
-  // Audit : trace l'invitation sans jamais logger l'URL (qui contient le token). Le token n'est
-  // visible qu'en dev (via urlDebug dans la réponse HTTP, jamais dans les logs serveur).
-  console.log(`[admin:audit] invitation lecteur créée — par_admin_id=${parAdminId}`);
-  const estDev = process.env.NODE_ENV !== 'production';
-  return estDev ? { urlDebug: url } : {};
-}
-
-// --- Activation (clic sur le lien d'invitation) ---
-export async function activerCompteParToken(pool: Pool, tokenBrut: unknown, mdpBrut: unknown): Promise<void> {
-  if (typeof tokenBrut !== 'string' || !/^[0-9a-f]{64}$/i.test(tokenBrut)) {
-    throw new ErreurAdminAuth(400, 'Lien d\'activation invalide.');
-  }
-  const mdp = validerNouveauMotDePasse(mdpBrut);
-
-  const hash = hacherToken(tokenBrut);
-  const { rows } = await pool.query<{ id: number; invitation_expires: string | null }>(
-    'SELECT id, invitation_expires FROM admin_users WHERE invitation_token_hash = $1',
-    [hash]
-  );
-  if (rows.length === 0) throw new ErreurAdminAuth(400, 'Lien d\'activation invalide ou déjà utilisé.');
-  const a = rows[0];
-  if (!a.invitation_expires || new Date(a.invitation_expires) < new Date()) {
-    throw new ErreurAdminAuth(400, 'Lien d\'activation expiré — demandez une nouvelle invitation.');
+  if (rows.length === 0 || !rows[0].password_hash) {
+    throw new ErreurAdminAuth(404, 'Compte introuvable.');
   }
 
-  const motDePasseHash = await bcrypt.hash(mdp, 10);
-  await pool.query(
-    `UPDATE admin_users
-     SET password_hash = $1, invitation_token_hash = NULL, invitation_expires = NULL
-     WHERE id = $2`,
-    [motDePasseHash, a.id]
-  );
-}
+  const valide = await bcrypt.compare(ancien, rows[0].password_hash);
+  if (!valide) throw new ErreurAdminAuth(401, 'Ancien mot de passe incorrect.');
 
-// --- Révocation d'un lecteur par un admin ---
-export async function revoquerLecteur(pool: Pool, parAdminId: number, cibleId: number): Promise<void> {
-  if (cibleId === parAdminId) throw new ErreurAdminAuth(400, 'Impossible de révoquer son propre compte.');
-  if (!Number.isInteger(cibleId) || cibleId <= 0) throw new ErreurAdminAuth(400, 'Identifiant invalide.');
-
-  const { rows } = await pool.query<{ is_founder: boolean; role: RoleAdmin }>(
-    'SELECT is_founder, role FROM admin_users WHERE id = $1',
-    [cibleId]
-  );
-  if (rows.length === 0) throw new ErreurAdminAuth(404, 'Compte introuvable.');
-  if (rows[0].is_founder) throw new ErreurAdminAuth(403, 'Impossible de révoquer un compte fondateur.');
-
-  await pool.query('DELETE FROM admin_users WHERE id = $1', [cibleId]);
-  console.log(`[admin:audit] révocation — par_admin_id=${parAdminId} cible_id=${cibleId}`);
-}
-
-// --- Lister les admins/lecteurs ---
-export interface AdminListItem {
-  id: number;
-  email: string;
-  role: RoleAdmin;
-  is_founder: boolean;
-  date_creation: string;
-  active: boolean; // true si password_hash existe, false si invitation pas encore activée
-  invite_par_email: string | null;
-}
-
-export async function listerAdmins(pool: Pool): Promise<AdminListItem[]> {
-  const { rows } = await pool.query<AdminListItem>(
-    `SELECT a.id, a.email, a.role, a.is_founder, a.date_creation,
-            (a.password_hash IS NOT NULL) AS active,
-            inv.email AS invite_par_email
-     FROM admin_users a
-     LEFT JOIN admin_users inv ON inv.id = a.invited_by_admin_id
-     ORDER BY a.is_founder DESC, a.date_creation ASC`
-  );
-  return rows;
+  const hash = await bcrypt.hash(nouveau, 10);
+  await pool.query('UPDATE admin_users SET password_hash = $1 WHERE id = $2', [hash, adminId]);
+  console.log(`[admin:audit] mot de passe changé — admin_id=${adminId}`);
 }
 
 // --- Cookie & JWT ---
@@ -335,7 +251,7 @@ export function administrateurDepuisCookies(cookieHeader: string | undefined): {
   if (!jeton) return null;
   try {
     const payload = jwt.verify(jeton, secretSession()) as unknown as { sub: number; email: string; role: RoleAdmin };
-    if (payload.role !== 'admin' && payload.role !== 'lecteur') return null;
+    if (payload.role !== 'admin') return null;
     return { id: payload.sub, email: payload.email, role: payload.role };
   } catch {
     return null;

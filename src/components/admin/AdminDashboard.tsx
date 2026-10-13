@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import {
   LayoutGrid, Building2, Map, Stethoscope, Users as UsersIcon,
-  FileText, AlertTriangle, Shield, LogOut, Menu, X,
+  FileText, AlertTriangle, MessageSquare, UserCog, LogOut, Menu, X,
 } from 'lucide-react';
 import { useAdminAuth } from './AdminShell';
 import {
   TabVueEnsemble, TabEtablissements, TabZones, TabSpecialites,
-  TabUtilisateurs, TabBusinessPlans, TabSignalements, TabAcces,
+  TabUtilisateurs, TabBusinessPlans, TabSignalements,
 } from './AdminTabs';
+import { TabMessages, useBadgeMessages } from './TabMessages';
+import { TabMonCompte } from './TabMonCompte';
 
-type OngletId = 'overview' | 'etablissements' | 'zones' | 'specialites' | 'utilisateurs' | 'business-plans' | 'signalements' | 'acces';
+type OngletId = 'overview' | 'etablissements' | 'zones' | 'specialites' | 'utilisateurs' | 'business-plans' | 'signalements' | 'messages' | 'compte';
 
-interface Onglet { id: OngletId; label: string; Icone: typeof LayoutGrid; adminSeul?: boolean }
+interface Onglet { id: OngletId; label: string; Icone: typeof LayoutGrid }
 
 const ONGLETS: Onglet[] = [
   { id: 'overview', label: "Vue d'ensemble", Icone: LayoutGrid },
@@ -21,7 +23,8 @@ const ONGLETS: Onglet[] = [
   { id: 'utilisateurs', label: 'Utilisateurs', Icone: UsersIcon },
   { id: 'business-plans', label: 'Business plans', Icone: FileText },
   { id: 'signalements', label: 'Signalements', Icone: AlertTriangle },
-  { id: 'acces', label: 'Accès', Icone: Shield, adminSeul: true },
+  { id: 'messages', label: 'Messages', Icone: MessageSquare },
+  { id: 'compte', label: 'Mon compte', Icone: UserCog },
 ];
 
 function initiales(email: string): string {
@@ -35,8 +38,11 @@ export default function AdminDashboard() {
   const { moi, deconnexion } = useAdminAuth();
   const [actif, setActif] = useState<OngletId>('overview');
   const [menuMobile, setMenuMobile] = useState(false);
+  // Badge "N nouveaux messages" sur l'onglet Messages. Polling toutes les 20s. On passe le fait que
+  // l'onglet messages est actif pour que le hook puisse marquer "lu" automatiquement.
+  const badgeMessages = useBadgeMessages(actif === 'messages');
 
-  const ongletsVisibles = ONGLETS.filter(o => !o.adminSeul || moi.role === 'admin');
+  const ongletsVisibles = ONGLETS;
   const ongletCourant = ongletsVisibles.find(o => o.id === actif) || ongletsVisibles[0];
 
   return (
@@ -47,16 +53,16 @@ export default function AdminDashboard() {
           toujours accessibles sans scroll — seule la liste des onglets (flex-1 overflow-y-auto)
           scrolle si elle dépasse la hauteur. */}
       <aside className={`
-        fixed inset-y-0 left-0 z-40 w-64 bg-gradient-to-b from-slate-900 to-slate-800 text-slate-100 flex flex-col
+        fixed inset-y-0 left-0 z-40 w-64 bg-white text-slate-700 border-r border-slate-200 flex flex-col
         transform transition-transform lg:translate-x-0 lg:sticky lg:top-0 lg:h-screen lg:shrink-0
         ${menuMobile ? 'translate-x-0' : '-translate-x-full'}
       `}>
-        <div className="px-6 py-5 border-b border-slate-700/60 flex items-center justify-between">
+        <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
           <div>
-            <p className="text-[10px] tracking-[0.2em] font-bold text-blue-400 uppercase">Empower Doctor</p>
-            <h1 className="text-base font-bold text-white mt-0.5">Dashboard</h1>
+            <p className="text-[10px] tracking-[0.2em] font-bold text-blue-600 uppercase">Empower Doctor</p>
+            <h1 className="text-base font-bold text-slate-900 mt-0.5">Dashboard</h1>
           </div>
-          <button onClick={() => setMenuMobile(false)} className="lg:hidden text-slate-400 hover:text-white">
+          <button onClick={() => setMenuMobile(false)} className="lg:hidden text-slate-500 hover:text-slate-900">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -72,31 +78,38 @@ export default function AdminDashboard() {
                 className={`
                   w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
                   ${estActif
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-700 text-white shadow-lg shadow-blue-900/30'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/60'}
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-700 text-white shadow-md shadow-blue-600/20'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}
                 `}
               >
                 <Icone className="w-4 h-4 shrink-0" />
-                <span>{o.label}</span>
+                <span className="flex-1 text-left">{o.label}</span>
+                {o.id === 'messages' && badgeMessages > 0 && (
+                  <span className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[11px] font-bold rounded-full ${
+                    estActif ? 'bg-white/25 text-white' : 'bg-rose-500 text-white'
+                  }`}>
+                    {badgeMessages > 99 ? '99+' : badgeMessages}
+                  </span>
+                )}
               </button>
             );
           })}
         </nav>
 
         {/* Profil + déconnexion */}
-        <div className="border-t border-slate-700/60 p-4 space-y-3">
+        <div className="border-t border-slate-200 p-4 space-y-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-700 flex items-center justify-center text-white font-bold text-sm shrink-0">
               {initiales(moi.email)}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-white truncate">{moi.email}</div>
-              <div className="text-xs text-slate-400 capitalize">{moi.role === 'admin' ? 'Administrateur' : 'Lecteur'}</div>
+              <div className="text-sm font-medium text-slate-900 truncate">{moi.email}</div>
+              <div className="text-xs text-slate-500">Administrateur</div>
             </div>
           </div>
           <button
             onClick={deconnexion}
-            className="w-full inline-flex items-center justify-center gap-2 text-sm text-slate-300 hover:text-white bg-slate-800/60 hover:bg-slate-700/60 rounded-xl px-3 py-2 transition-colors"
+            className="w-full inline-flex items-center justify-center gap-2 text-sm text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl px-3 py-2 transition-colors"
           >
             <LogOut className="w-4 h-4" />
             Déconnexion
@@ -134,10 +147,11 @@ export default function AdminDashboard() {
             {actif === 'etablissements' && <TabEtablissements />}
             {actif === 'zones' && <TabZones />}
             {actif === 'specialites' && <TabSpecialites />}
-            {actif === 'utilisateurs' && <TabUtilisateurs role={moi.role} />}
+            {actif === 'utilisateurs' && <TabUtilisateurs />}
             {actif === 'business-plans' && <TabBusinessPlans />}
-            {actif === 'signalements' && <TabSignalements role={moi.role} />}
-            {actif === 'acces' && moi.role === 'admin' && <TabAcces moiId={moi.id} />}
+            {actif === 'signalements' && <TabSignalements />}
+            {actif === 'messages' && <TabMessages moiEmail={moi.email} />}
+            {actif === 'compte' && <TabMonCompte />}
           </div>
         </main>
       </div>

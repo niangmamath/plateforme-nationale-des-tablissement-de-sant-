@@ -4,11 +4,19 @@
 
 import type { Pool } from 'pg';
 import {
-  connecterAdmin, inviterLecteur, activerCompteParToken, revoquerLecteur, listerAdmins,
+  connecterAdmin, changerMotDePasseAdmin,
   creerJetonAdmin, cookieAdminSession, cookieDeconnexionAdmin, administrateurDepuisCookies,
-  ErreurAdminAuth, loginAdminRateLimit, inviterRateLimit,
+  ErreurAdminAuth, loginAdminRateLimit,
 } from './adminAuth.js';
 import { obtenirStats, estSectionValide, ErreurAdminStats } from './adminStats.js';
+import {
+  listerSignalements, mettreAJourSignalement, repondreSignalement, obtenirSignalement,
+  ErreurSignalement,
+} from './adminSignalements.js';
+import {
+  listerMessages, envoyerMessage, marquerLuJusquA, supprimerMessage, compterNonLus,
+  ErreurMessages,
+} from './adminMessages.js';
 
 export interface AdminReq {
   method: string | undefined;
@@ -74,41 +82,94 @@ export async function routerAdmin(pool: Pool, req: AdminReq): Promise<AdminRes> 
       return { status: 200, body: { ok: true }, setCookie: cookieDeconnexionAdmin() };
     }
 
-    if (method === 'POST' && path === '/activer') {
-      const { token, password } = req.body ?? {};
-      await activerCompteParToken(pool, token, password);
+    // Changement de mot de passe depuis l'espace compte.
+    if (method === 'POST' && path === '/password') {
+      const a = administrateurDepuisCookies(req.cookieHeader);
+      if (!a) return { status: 401, body: { error: 'Non connecté.' } };
+      const { ancien, nouveau } = req.body ?? {};
+      await changerMotDePasseAdmin(pool, a.id, ancien, nouveau);
       return { status: 200, body: { ok: true } };
     }
 
-    if (method === 'POST' && path === '/inviter') {
+    // --- Messagerie interne ---
+    if (method === 'GET' && path === '/messages') {
       const a = administrateurDepuisCookies(req.cookieHeader);
       if (!a) return { status: 401, body: { error: 'Non connecté.' } };
-      if (a.role !== 'admin') return { status: 403, body: { error: 'Réservé aux administrateurs.' } };
-      // Rate limit par admin : si une session est volée, limite le spam d'invitations.
-      const limite = inviterRateLimit.verifier(`admin:${a.id}`);
-      if (!limite.ok) {
-        return { status: 429, body: { error: 'Vous avez atteint la limite d\'invitations pour l\'heure en cours. Réessayez plus tard.' } };
-      }
-      const { email } = req.body ?? {};
-      const r = await inviterLecteur(pool, email, a.id);
-      return { status: 200, body: { ok: true, ...r } };
+      const limite = typeof req.query.limite === 'string' ? Number(req.query.limite) : undefined;
+      return { status: 200, body: await listerMessages(pool, a.id, limite) };
     }
 
-    if (method === 'POST' && path === '/revoquer') {
+    if (method === 'GET' && path === '/messages/non-lus') {
       const a = administrateurDepuisCookies(req.cookieHeader);
       if (!a) return { status: 401, body: { error: 'Non connecté.' } };
-      if (a.role !== 'admin') return { status: 403, body: { error: 'Réservé aux administrateurs.' } };
-      const { id } = req.body ?? {};
-      if (typeof id !== 'number') return { status: 400, body: { error: 'Paramètre `id` numérique requis.' } };
-      await revoquerLecteur(pool, a.id, id);
+      return { status: 200, body: await compterNonLus(pool, a.id) };
+    }
+
+    if (method === 'POST' && path === '/messages') {
+      const a = administrateurDepuisCookies(req.cookieHeader);
+      if (!a) return { status: 401, body: { error: 'Non connecté.' } };
+      const { contenu } = req.body ?? {};
+      const m = await envoyerMessage(pool, a.id, contenu);
+      return { status: 200, body: m };
+    }
+
+    if (method === 'POST' && path === '/messages/lu') {
+      const a = administrateurDepuisCookies(req.cookieHeader);
+      if (!a) return { status: 401, body: { error: 'Non connecté.' } };
+      const { dernier_id } = req.body ?? {};
+      await marquerLuJusquA(pool, a.id, Number(dernier_id ?? 0));
       return { status: 200, body: { ok: true } };
     }
 
-    if (method === 'GET' && path === '/acces') {
+    const matchSupprMsg = /^\/messages\/(\d+)$/.exec(path);
+    if (method === 'DELETE' && matchSupprMsg) {
       const a = administrateurDepuisCookies(req.cookieHeader);
       if (!a) return { status: 401, body: { error: 'Non connecté.' } };
-      if (a.role !== 'admin') return { status: 403, body: { error: 'Réservé aux administrateurs.' } };
-      return { status: 200, body: await listerAdmins(pool) };
+      await supprimerMessage(pool, a.id, Number(matchSupprMsg[1]));
+      return { status: 200, body: { ok: true } };
+    }
+
+    // --- Signalements : actions de traitement (admin uniquement, données nominatives) ---
+    if (method === 'GET' && path === '/signalements') {
+      const a = administrateurDepuisCookies(req.cookieHeader);
+      if (!a) return { status: 401, body: { error: 'Non connecté.' } };
+      const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+      const statut = typeof req.query.statut === 'string' ? req.query.statut : undefined;
+      const limite = typeof req.query.limite === 'string' ? Number(req.query.limite) : undefined;
+      const offset = typeof req.query.offset === 'string' ? Number(req.query.offset) : undefined;
+      const data = await listerSignalements(pool, { q, statut, limite, offset });
+      return { status: 200, body: data };
+    }
+
+    const matchDetail = /^\/signalements\/(\d+)$/.exec(path);
+    if (method === 'GET' && matchDetail) {
+      const a = administrateurDepuisCookies(req.cookieHeader);
+      if (!a) return { status: 401, body: { error: 'Non connecté.' } };
+      const id = Number(matchDetail[1]);
+      const s = await obtenirSignalement(pool, id);
+      if (!s) return { status: 404, body: { error: 'Signalement introuvable.' } };
+      return { status: 200, body: s };
+    }
+
+    if (method === 'PATCH' && matchDetail) {
+      const a = administrateurDepuisCookies(req.cookieHeader);
+      if (!a) return { status: 401, body: { error: 'Non connecté.' } };
+      const id = Number(matchDetail[1]);
+      const { statut, note_interne } = req.body ?? {};
+      const s = await mettreAJourSignalement(pool, a.id, id, { statut, note_interne });
+      cacheStats.clear();
+      return { status: 200, body: s };
+    }
+
+    const matchRepondre = /^\/signalements\/(\d+)\/repondre$/.exec(path);
+    if (method === 'POST' && matchRepondre) {
+      const a = administrateurDepuisCookies(req.cookieHeader);
+      if (!a) return { status: 401, body: { error: 'Non connecté.' } };
+      const id = Number(matchRepondre[1]);
+      const { message } = req.body ?? {};
+      await repondreSignalement(pool, a.id, id, String(message ?? ''));
+      cacheStats.clear();
+      return { status: 200, body: { ok: true } };
     }
 
     if (method === 'GET' && path === '/stats') {
@@ -126,7 +187,7 @@ export async function routerAdmin(pool: Pool, req: AdminReq): Promise<AdminRes> 
 
     return { status: 404, body: { error: 'Route admin inconnue.' } };
   } catch (err: any) {
-    if (err instanceof ErreurAdminAuth || err instanceof ErreurAdminStats) {
+    if (err instanceof ErreurAdminAuth || err instanceof ErreurAdminStats || err instanceof ErreurSignalement || err instanceof ErreurMessages) {
       return { status: err.status, body: { error: err.message } };
     }
     console.error(`Erreur /api/admin-ui${path} :`, err);

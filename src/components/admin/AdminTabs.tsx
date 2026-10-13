@@ -11,6 +11,7 @@ import {
   CheckCircle2, Mail as MailIcon, Lock as LockIcon, UserPlus, Trash2, Loader2, AlertCircle,
   TrendingUp, Clock, Stethoscope, TrendingDown, Package, Wrench, Activity, Scale,
 } from 'lucide-react';
+import { SignalementsGestion } from './SignalementsGestion';
 
 const COLOR_PALETTE = ['#2563eb', '#0d9488', '#a9690a', '#d03b3b', '#7c3aed', '#0CA30C', '#8891A0', '#1e3a8a'];
 const C = COLOR_PALETTE;
@@ -217,7 +218,32 @@ export function TabVueEnsemble() {
 
   return (
     <div className="space-y-6">
-      {/* Rangée 1 : 4 totaux principaux */}
+      {/* Rangée 1 : couverture géographique */}
+      <Carte titre="Couverture géographique" sousTitre="Pays, villes et zones couverts par le pipeline">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="text-center p-3">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Pays</div>
+            <div className="text-3xl font-bold text-blue-700 mt-2 tabular-nums">{data.pays}</div>
+          </div>
+          <div className="text-center p-3">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Villes</div>
+            <div className="text-3xl font-bold text-blue-700 mt-2 tabular-nums">{data.villes}</div>
+          </div>
+          <div className="text-center p-3">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Zones</div>
+            <div className="text-3xl font-bold text-blue-700 mt-2 tabular-nums">{data.zones}</div>
+          </div>
+          <div className="text-center p-3">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Zones complètes</div>
+            <div className="text-3xl font-bold text-emerald-700 mt-2 tabular-nums">
+              {data.zones_donnees_completes}
+              <span className="text-sm text-slate-400 font-normal ml-1">/ {data.zones}</span>
+            </div>
+          </div>
+        </div>
+      </Carte>
+
+      {/* Rangée 2 : 4 totaux principaux */}
       <Grille cols={4}>
         <Kpi label="Utilisateurs"                 valeur={data.utilisateurs}           Icone={UsersIcon}  teinte="blue" />
         <Kpi label="Business plans générés"       valeur={data.business_plans_total}   Icone={FileText}   teinte="violet" />
@@ -252,31 +278,6 @@ export function TabVueEnsemble() {
         <Kpi label="Établissements brouillons" valeur={data.etablissements_brouillons} Icone={FileEdit}      teinte="amber" />
         <Kpi label="E-mails vérifiés"          valeur={`${data.taux_verifies} %`}      Icone={MailIcon}      teinte="teal" />
       </Grille>
-
-      {/* Rangée 5 : couverture géographique */}
-      <Carte titre="Couverture géographique" sousTitre="Pays, villes et zones couverts par le pipeline">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="text-center p-3">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Pays</div>
-            <div className="text-3xl font-bold text-blue-700 mt-2 tabular-nums">{data.pays}</div>
-          </div>
-          <div className="text-center p-3">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Villes</div>
-            <div className="text-3xl font-bold text-blue-700 mt-2 tabular-nums">{data.villes}</div>
-          </div>
-          <div className="text-center p-3">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Zones</div>
-            <div className="text-3xl font-bold text-blue-700 mt-2 tabular-nums">{data.zones}</div>
-          </div>
-          <div className="text-center p-3">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Zones complètes</div>
-            <div className="text-3xl font-bold text-emerald-700 mt-2 tabular-nums">
-              {data.zones_donnees_completes}
-              <span className="text-sm text-slate-400 font-normal ml-1">/ {data.zones}</span>
-            </div>
-          </div>
-        </div>
-      </Carte>
 
       {/* Rangée 6 : dernières activités */}
       <Grille cols={2}>
@@ -313,8 +314,7 @@ interface StatEt {
   par_categorie: { categorie: string; n: number }[];
   par_ville: { ville: string; n: number }[];
   par_source: { source: string; n: number }[];
-  verification_requise: number;
-  doublons_possibles: number;
+  a_verifier: number;
   par_mois: { mois: string; n: number }[];
 }
 
@@ -336,19 +336,14 @@ export function TabEtablissements() {
             </PieChart>
           </ResponsiveContainer>
         </Carte>
-        <Carte titre="Qualité des données">
-          <div className="grid grid-cols-2 gap-3 h-[240px] content-center">
-            <div className="bg-gradient-to-br from-amber-50 to-amber-100/60 border border-amber-200/60 rounded-xl p-4">
+        <Carte titre="Qualité des données" sousTitre="Fiches flaggées par le pipeline (doublons suspectés inclus) — à relire manuellement">
+          <div className="flex items-center justify-center h-[240px]">
+            <div className="bg-gradient-to-br from-amber-50 to-amber-100/60 border border-amber-200/60 rounded-xl p-6 w-full max-w-xs">
               <div className="flex items-center gap-2 text-xs font-semibold text-amber-800 uppercase tracking-wide">
                 <AlertCircle className="w-3.5 h-3.5" /> À vérifier
               </div>
-              <div className="text-3xl font-bold text-amber-900 mt-2 tabular-nums">{data.verification_requise.toLocaleString('fr-FR')}</div>
-            </div>
-            <div className="bg-gradient-to-br from-rose-50 to-rose-100/60 border border-rose-200/60 rounded-xl p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-rose-800 uppercase tracking-wide">
-                <AlertCircle className="w-3.5 h-3.5" /> Doublons
-              </div>
-              <div className="text-3xl font-bold text-rose-900 mt-2 tabular-nums">{data.doublons_possibles.toLocaleString('fr-FR')}</div>
+              <div className="text-5xl font-bold text-amber-900 mt-2 tabular-nums">{data.a_verifier.toLocaleString('fr-FR')}</div>
+              <div className="text-xs text-amber-700/80 mt-2">établissement{data.a_verifier > 1 ? 's' : ''} méritant un traitement</div>
             </div>
           </div>
         </Carte>
@@ -374,14 +369,14 @@ export function TabEtablissements() {
             </BarChart>
           </ResponsiveContainer>
         </Carte>
-        <Carte titre="Par source" sousTitre="Pipeline de données">
+        <Carte titre="Par source" sousTitre="Pipeline de données — un établissement peut provenir de plusieurs sources">
           <ResponsiveContainer width="100%" height={320}>
-            <PieChart>
-              <Pie data={data.par_source} dataKey="n" nameKey="source" innerRadius={55} outerRadius={90} paddingAngle={2}>
-                {data.par_source.map((_, i) => <Cell key={i} fill={C[i % C.length]} />)}
-              </Pie>
-              <Tooltip /><Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{ fontSize: 10 }} />
-            </PieChart>
+            <BarChart data={data.par_source} layout="vertical" margin={{ ...chartMargin, left: 140 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis type="number" tick={axisStyle} />
+              <YAxis type="category" dataKey="source" width={140} tick={{ ...axisStyle, fontSize: 11 }} />
+              <Tooltip /><Bar dataKey="n" fill={C[2]} radius={[0, 6, 6, 0]} />
+            </BarChart>
           </ResponsiveContainer>
         </Carte>
       </Grille>
@@ -479,8 +474,8 @@ export function TabSpecialites() {
 
   const publies = data.par_statut.find(s => s.statut === 'publie')?.n ?? 0;
   const brouillons = data.par_statut.find(s => s.statut === 'brouillon')?.n ?? 0;
-  const topInvest = [...data.specialites].sort((a, b) => b.investissement_total - a.investissement_total).slice(0, 15);
-  const topEtab = data.nb_etablissements_par_specialite.filter(s => s.nb_etab > 0).slice(0, 15);
+  const invest = [...data.specialites].sort((a, b) => b.investissement_total - a.investissement_total);
+  const etabParSpec = data.nb_etablissements_par_specialite.filter(s => s.nb_etab > 0);
 
   // Poids moyens en format Recharts
   const poidsData = Object.entries(data.poids_moyens).map(([critere, val]) => ({ critere, val }));
@@ -537,12 +532,12 @@ export function TabSpecialites() {
         </Grille>
       )}
 
-      {/* Rangée 3 : Nombre d'établissements par spécialité (top 15) */}
-      <Carte titre="Établissements publiés par spécialité" sousTitre="Combien d'établissements correspondent à chaque spécialité dans la base — top 15">
-        <ResponsiveContainer width="100%" height={420}>
-          <BarChart data={topEtab} layout="vertical" margin={{ ...chartMargin, left: 120 }}>
+      {/* Rangée 3 : Nombre d'établissements par spécialité (toutes) */}
+      <Carte titre="Établissements publiés par spécialité" sousTitre="Combien d'établissements correspondent à chaque spécialité dans la base">
+        <ResponsiveContainer width="100%" height={Math.max(260, etabParSpec.length * 28)}>
+          <BarChart data={etabParSpec} layout="vertical" margin={{ ...chartMargin, left: 160 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis type="number" tick={axisStyle} /><YAxis type="category" dataKey="nom" width={120} tick={{ ...axisStyle, fontSize: 11 }} />
+            <XAxis type="number" tick={axisStyle} /><YAxis type="category" dataKey="nom" width={160} tick={{ ...axisStyle, fontSize: 11 }} interval={0} />
             <Tooltip /><Bar dataKey="nb_etab" fill={C[1]} radius={[0, 6, 6, 0]} name="Établissements" />
           </BarChart>
         </ResponsiveContainer>
@@ -575,12 +570,12 @@ export function TabSpecialites() {
         </ResponsiveContainer>
       </Carte>
 
-      {/* Rangée 6 : Investissement détaillé */}
-      <Carte titre="Décomposition de l'investissement" sousTitre="Top 15 — somme aménagement + machines + frais préliminaires + BFR">
-        <ResponsiveContainer width="100%" height={420}>
-          <BarChart data={topInvest} layout="vertical" margin={{ ...chartMargin, left: 120 }}>
+      {/* Rangée 6 : Investissement détaillé (toutes les spécialités) */}
+      <Carte titre="Décomposition de l'investissement" sousTitre="Somme aménagement + machines + frais préliminaires + BFR, pour chaque spécialité">
+        <ResponsiveContainer width="100%" height={Math.max(260, invest.length * 28)}>
+          <BarChart data={invest} layout="vertical" margin={{ ...chartMargin, left: 160 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis type="number" tick={axisStyle} /><YAxis type="category" dataKey="nom" width={120} tick={{ ...axisStyle, fontSize: 11 }} />
+            <XAxis type="number" tick={axisStyle} /><YAxis type="category" dataKey="nom" width={160} tick={{ ...axisStyle, fontSize: 11 }} interval={0} />
             <Tooltip /><Legend verticalAlign="top" iconType="circle" wrapperStyle={{ fontSize: 11 }} />
             <Bar dataKey="amenagement"         stackId="a" fill={C[0]} name="Aménagement" />
             <Bar dataKey="machines"            stackId="a" fill={C[1]} name="Machines" />
@@ -637,7 +632,7 @@ interface StatUser {
   derniers?: { id: number; email: string; date_creation: string; email_verified: boolean; auth: string }[];
 }
 
-export function TabUtilisateurs({ role }: { role: 'admin' | 'lecteur' }) {
+export function TabUtilisateurs() {
   const { data, chargement, erreur } = useFetch<StatUser>('utilisateurs');
   if (chargement) return <Chargement />;
   if (erreur) return <Erreur msg={erreur} />;
@@ -678,7 +673,7 @@ export function TabUtilisateurs({ role }: { role: 'admin' | 'lecteur' }) {
           </ResponsiveContainer>
         </Carte>
       </Grille>
-      {role === 'admin' && data.derniers && (
+      {data.derniers && (
         <Carte titre="Derniers inscrits" sousTitre="20 inscriptions les plus récentes">
           <div className="overflow-x-auto -mx-5 lg:-mx-6">
             <table className="w-full text-sm">
@@ -706,11 +701,6 @@ export function TabUtilisateurs({ role }: { role: 'admin' | 'lecteur' }) {
               </tbody>
             </table>
           </div>
-        </Carte>
-      )}
-      {role === 'lecteur' && (
-        <Carte titre="Détails individuels" sousTitre="Réservé aux administrateurs">
-          <p className="text-sm text-slate-500 italic">Les détails nominatifs (emails) sont réservés aux administrateurs.</p>
         </Carte>
       )}
     </div>
@@ -779,10 +769,9 @@ interface StatSig {
   par_mois: { mois: string; n: number }[];
   delai_traitement_h: number | null;
   par_profession: { profession: string; n: number }[];
-  ouverts_recents?: { id: number; type: string; nom_prenom: string; email: string; profession: string; statut: string; date_creation: string }[];
 }
 
-export function TabSignalements({ role }: { role: 'admin' | 'lecteur' }) {
+export function TabSignalements() {
   const { data, chargement, erreur } = useFetch<StatSig>('signalements');
   if (chargement) return <Chargement />;
   if (erreur) return <Erreur msg={erreur} />;
@@ -855,208 +844,8 @@ export function TabSignalements({ role }: { role: 'admin' | 'lecteur' }) {
           </ResponsiveContainer>
         </Carte>
       </Grille>
-      {role === 'admin' && data.ouverts_recents && (
-        <Carte titre="Signalements ouverts" sousTitre="20 derniers signalements à traiter">
-          <div className="overflow-x-auto -mx-5 lg:-mx-6">
-            <table className="w-full text-sm">
-              <thead className="text-[11px] text-slate-500 uppercase tracking-wide bg-slate-50/60 border-y border-slate-200">
-                <tr>
-                  <th className="text-left px-5 lg:px-6 py-3 font-semibold">Nom</th>
-                  <th className="text-left px-3 py-3 font-semibold">E-mail</th>
-                  <th className="text-left px-3 py-3 font-semibold">Profession</th>
-                  <th className="text-left px-3 py-3 font-semibold">Type</th>
-                  <th className="text-left px-5 lg:px-6 py-3 font-semibold">Statut</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.ouverts_recents.map(s => (
-                  <tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50/40">
-                    <td className="px-5 lg:px-6 py-3 font-medium text-slate-900">{s.nom_prenom}</td>
-                    <td className="px-3 py-3 text-xs text-slate-600">{s.email}</td>
-                    <td className="px-3 py-3 text-slate-700">{s.profession}</td>
-                    <td className="px-3 py-3 text-xs text-slate-600">{s.type}</td>
-                    <td className="px-5 lg:px-6 py-3">
-                      {s.statut === 'nouveau'
-                        ? <span className="text-xs font-medium bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full">Nouveau</span>
-                        : <span className="text-xs font-medium bg-blue-100 text-blue-800 px-2.5 py-1 rounded-full">En cours</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Carte>
-      )}
-      {role === 'lecteur' && (
-        <Carte titre="Détails individuels" sousTitre="Réservé aux administrateurs">
-          <p className="text-sm text-slate-500 italic">Les détails nominatifs (emails, noms des signaleurs) sont réservés aux administrateurs.</p>
-        </Carte>
-      )}
+      <SignalementsGestion />
     </div>
   );
 }
 
-// === ACCÈS (admin uniquement) ===
-interface AdminListItem {
-  id: number;
-  email: string;
-  role: 'admin' | 'lecteur';
-  is_founder: boolean;
-  date_creation: string;
-  active: boolean;
-  invite_par_email: string | null;
-}
-
-function initialesEmail(email: string): string {
-  const local = email.split('@')[0];
-  const parts = local.split(/[.\-_]+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return local.slice(0, 2).toUpperCase();
-}
-
-export function TabAcces({ moiId }: { moiId: number }) {
-  const [liste, setListe] = useState<AdminListItem[] | null>(null);
-  const [listeChargement, setListeChargement] = useState(true);
-  const [listeErreur, setListeErreur] = useState<string | null>(null);
-  const chargerListe = useCallback(() => {
-    setListeChargement(true);
-    fetch('/api/admin-ui/acces', { credentials: 'same-origin' })
-      .then(async r => {
-        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Erreur serveur');
-        return r.json();
-      })
-      .then(setListe)
-      .catch(e => setListeErreur(e.message))
-      .finally(() => setListeChargement(false));
-  }, []);
-  useEffect(() => { chargerListe(); }, [chargerListe]);
-
-  const [emailInvite, setEmailInvite] = useState('');
-  const [enCours, setEnCours] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [messageErreur, setMessageErreur] = useState<string | null>(null);
-
-  async function inviter(e: FormEvent) {
-    e.preventDefault();
-    setMessage(null); setMessageErreur(null); setEnCours(true);
-    try {
-      const r = await fetch('/api/admin-ui/inviter', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin', body: JSON.stringify({ email: emailInvite }),
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) setMessageErreur(d.error || "Invitation impossible.");
-      else {
-        setMessage(d.urlDebug ? `Invitation envoyée. (DEV) Lien : ${d.urlDebug}` : 'Invitation envoyée par e-mail.');
-        setEmailInvite(''); chargerListe();
-      }
-    } catch { setMessageErreur('Erreur réseau.'); }
-    finally { setEnCours(false); }
-  }
-
-  async function revoquer(id: number, email: string) {
-    if (!confirm(`Révoquer l'accès de ${email} ? Cette action est irréversible.`)) return;
-    const r = await fetch('/api/admin-ui/revoquer', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin', body: JSON.stringify({ id }),
-    });
-    if (r.ok) chargerListe();
-    else {
-      const d = await r.json().catch(() => ({}));
-      alert(d.error || 'Révocation impossible.');
-    }
-  }
-
-  return (
-    <div className="space-y-5">
-      <Carte titre="Inviter un lecteur" sousTitre="Accès en consultation seule, lien d'activation valable 7 jours">
-        <form onSubmit={inviter} className="flex flex-col sm:flex-row gap-3 sm:items-end">
-          <div className="flex-1">
-            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wide mb-1.5">E-mail du nouveau lecteur</label>
-            <div className="relative">
-              <MailIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-              <input
-                type="email" value={emailInvite} onChange={e => setEmailInvite(e.target.value)} required
-                placeholder="nouveau.lecteur@exemple.com"
-                className="w-full border border-slate-200 rounded-xl pl-10 pr-3 py-2.5 text-sm bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-              />
-            </div>
-          </div>
-          <button type="submit" disabled={enCours}
-            className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 disabled:opacity-50 text-white font-semibold py-2.5 px-5 rounded-xl shadow-md shadow-blue-600/20 transition-all">
-            {enCours ? 'Envoi…' : (<><UserPlus className="w-4 h-4" />Inviter</>)}
-          </button>
-        </form>
-        {message && (
-          <div className="mt-4 flex items-start gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-            <p className="text-sm text-emerald-800 break-all">{message}</p>
-          </div>
-        )}
-        {messageErreur && (
-          <div className="mt-4 flex items-start gap-2 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3">
-            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-            <p className="text-sm text-rose-800">{messageErreur}</p>
-          </div>
-        )}
-      </Carte>
-
-      <Carte titre="Comptes existants" sousTitre="Administrateurs et lecteurs ayant accès au dashboard">
-        {listeChargement && <Chargement />}
-        {listeErreur && <Erreur msg={listeErreur} />}
-        {liste && (
-          <div className="overflow-x-auto -mx-5 lg:-mx-6">
-            <table className="w-full text-sm">
-              <thead className="text-[11px] text-slate-500 uppercase tracking-wide bg-slate-50/60 border-y border-slate-200">
-                <tr>
-                  <th className="text-left px-5 lg:px-6 py-3 font-semibold">Compte</th>
-                  <th className="text-left px-3 py-3 font-semibold">Rôle</th>
-                  <th className="text-left px-3 py-3 font-semibold">Statut</th>
-                  <th className="text-left px-3 py-3 font-semibold">Invité par</th>
-                  <th className="text-right px-5 lg:px-6 py-3 font-semibold">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {liste.map(a => (
-                  <tr key={a.id} className="border-b border-slate-100 hover:bg-slate-50/40">
-                    <td className="px-5 lg:px-6 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-700 flex items-center justify-center text-white font-bold text-xs shrink-0">
-                          {initialesEmail(a.email)}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="font-medium text-slate-900 truncate">{a.email}</div>
-                          <div className="text-xs text-slate-500">{new Date(a.date_creation).toLocaleDateString('fr-FR')}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      {a.is_founder
-                        ? <span className="text-xs font-medium bg-blue-100 text-blue-800 px-2.5 py-1 rounded-full">Admin</span>
-                        : a.role === 'admin'
-                        ? <span className="text-xs font-medium bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-full">Admin</span>
-                        : <span className="text-xs font-medium bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full">Lecteur</span>}
-                    </td>
-                    <td className="px-3 py-3">
-                      {a.active
-                        ? <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />Actif</span>
-                        : <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700"><span className="w-1.5 h-1.5 bg-amber-500 rounded-full" />En attente</span>}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-slate-500 truncate max-w-[200px]">{a.invite_par_email || '—'}</td>
-                    <td className="px-5 lg:px-6 py-3 text-right">
-                      {!a.is_founder && a.id !== moiId && (
-                        <button onClick={() => revoquer(a.id, a.email)} className="inline-flex items-center gap-1 text-xs text-rose-700 hover:text-white hover:bg-rose-600 border border-rose-200 hover:border-rose-600 rounded-lg px-2.5 py-1.5 transition-colors">
-                          <Trash2 className="w-3 h-3" />Révoquer
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Carte>
-    </div>
-  );
-}
