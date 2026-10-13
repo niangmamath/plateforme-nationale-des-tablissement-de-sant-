@@ -38,7 +38,7 @@ export default function AdminLoginPage({ onConnecte }: { onConnecte: (m: AdminMo
           </div>
           <p className="text-xs tracking-[0.2em] font-bold text-blue-600 uppercase mb-1">Empower Doctor</p>
           <h1 className="text-2xl font-bold text-slate-900">Dashboard interne</h1>
-          <p className="text-sm text-slate-500 mt-2">Accès réservé aux administrateurs et aux comptes invités.</p>
+          <p className="text-sm text-slate-500 mt-2">Accès réservé aux administrateurs.</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-xl shadow-slate-900/5 border border-slate-200/60 p-7">
