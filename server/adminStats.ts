@@ -65,22 +65,25 @@ async function statsOverview(pool: Pool) {
     pool.query<{ n: string }>('SELECT COUNT(*)::text AS n FROM villes'),
     pool.query<{ n: string }>('SELECT COUNT(*)::text AS n FROM zones'),
     pool.query<{ n: string }>("SELECT COUNT(*)::text AS n FROM zones WHERE population IS NOT NULL AND pop0_14 IS NOT NULL AND pop15_59 IS NOT NULL AND pop60_plus IS NOT NULL AND surface_km2 IS NOT NULL"),
+    // Séries 30 derniers jours, alignées sur l'heure locale (Africa/Casablanca, UTC+1 constant
+    // depuis 2018). Sans le AT TIME ZONE, Postgres tronque sur UTC et une inscription faite tard
+    // le soir heure Maroc tomberait dans le jour d'avant.
     pool.query<{ jour: string; n: string }>(
-      `WITH jours AS (SELECT generate_series(CURRENT_DATE - interval '29 days', CURRENT_DATE, interval '1 day')::date AS jour)
+      `WITH jours AS (SELECT generate_series((now() AT TIME ZONE 'Africa/Casablanca')::date - interval '29 days', (now() AT TIME ZONE 'Africa/Casablanca')::date, interval '1 day')::date AS jour)
        SELECT to_char(j.jour, 'YYYY-MM-DD') AS jour, COUNT(u.id)::text AS n
-       FROM jours j LEFT JOIN users u ON date_trunc('day', u.date_creation)::date = j.jour
+       FROM jours j LEFT JOIN users u ON date_trunc('day', u.date_creation AT TIME ZONE 'Africa/Casablanca')::date = j.jour
        GROUP BY j.jour ORDER BY j.jour`
     ),
     pool.query<{ jour: string; n: string }>(
-      `WITH jours AS (SELECT generate_series(CURRENT_DATE - interval '29 days', CURRENT_DATE, interval '1 day')::date AS jour)
+      `WITH jours AS (SELECT generate_series((now() AT TIME ZONE 'Africa/Casablanca')::date - interval '29 days', (now() AT TIME ZONE 'Africa/Casablanca')::date, interval '1 day')::date AS jour)
        SELECT to_char(j.jour, 'YYYY-MM-DD') AS jour, COUNT(d.id)::text AS n
-       FROM jours j LEFT JOIN business_plan_drafts d ON date_trunc('day', d.date_creation)::date = j.jour
+       FROM jours j LEFT JOIN business_plan_drafts d ON date_trunc('day', d.date_creation AT TIME ZONE 'Africa/Casablanca')::date = j.jour
        GROUP BY j.jour ORDER BY j.jour`
     ),
     pool.query<{ jour: string; n: string }>(
-      `WITH jours AS (SELECT generate_series(CURRENT_DATE - interval '29 days', CURRENT_DATE, interval '1 day')::date AS jour)
+      `WITH jours AS (SELECT generate_series((now() AT TIME ZONE 'Africa/Casablanca')::date - interval '29 days', (now() AT TIME ZONE 'Africa/Casablanca')::date, interval '1 day')::date AS jour)
        SELECT to_char(j.jour, 'YYYY-MM-DD') AS jour, COUNT(s.id)::text AS n
-       FROM jours j LEFT JOIN signalements s ON date_trunc('day', s.date_creation)::date = j.jour
+       FROM jours j LEFT JOIN signalements s ON date_trunc('day', s.date_creation AT TIME ZONE 'Africa/Casablanca')::date = j.jour
        GROUP BY j.jour ORDER BY j.jour`
     ),
     pool.query<{ d: string | null }>('SELECT MAX(date_creation)::text AS d FROM users'),

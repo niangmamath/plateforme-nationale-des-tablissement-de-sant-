@@ -172,6 +172,17 @@ function KpiAvecTendance({ label, valeur, Icone, teinte, courant, precedent, suf
   );
 }
 
+// Formatte une date "YYYY-MM-DD" en "jj mois" sans passer par new Date() (évite le décalage de
+// fuseau : new Date("2026-10-13") parse comme UTC 00:00, affiché selon le fuseau du navigateur →
+// peut retomber la veille).
+const MOIS_COURT = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+function formatterJour(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return iso;
+  const mois = Number(m[2]) - 1;
+  return `${Number(m[3])} ${MOIS_COURT[mois] || ''}`;
+}
+
 function Sparkline({ data, teinte }: { data: { jour: string; n: number }[]; teinte: string }) {
   return (
     <ResponsiveContainer width="100%" height={60}>
@@ -182,10 +193,13 @@ function Sparkline({ data, teinte }: { data: { jour: string; n: number }[]; tein
             <stop offset="95%" stopColor={teinte} stopOpacity={0}/>
           </linearGradient>
         </defs>
+        {/* XAxis hide : indispensable pour que Recharts passe la vraie valeur "jour" au tooltip
+            au lieu de l'index du tableau (sinon le tooltip affiche "1 janv.", l'epoch Unix). */}
+        <XAxis dataKey="jour" hide />
         <Tooltip
           cursor={{ stroke: teinte, strokeWidth: 1, strokeDasharray: '3 3' }}
           contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #e2e8f0' }}
-          labelFormatter={(v) => new Date(v).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+          labelFormatter={(v) => formatterJour(String(v))}
         />
         <Area type="monotone" dataKey="n" stroke={teinte} strokeWidth={2} fill={`url(#spark-${teinte})`} />
       </AreaChart>
