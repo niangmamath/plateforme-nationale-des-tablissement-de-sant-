@@ -5,6 +5,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { randomInt, createHash } from 'crypto';
 import type { Pool } from 'pg';
 import { envoyerEmail, emailCodeVerification, emailBienvenue, emailCodeReinitialisation } from './email.js';
+import { RateLimit } from './rateLimit.js';
 
 export class ErreurAuth extends Error {
   constructor(public status: number, message: string) {
@@ -13,8 +14,16 @@ export class ErreurAuth extends Error {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const EMAIL_MAX_LONGUEUR = 254; // RFC 5321
 const COOKIE_NOM = 'session';
 const DUREE_SESSION_JOURS = 6;
+
+// Rate-limit par IP, complémentaire du verrou par compte (login_fail_count/login_locked_until) :
+// sinon un attaquant pourrait tester 5 mdp sur chaque compte connu séquentiellement.
+export const loginUserRateLimit = new RateLimit(20, 15 * 60 * 1000, 'login-user');
+
+// Hash factice pour éviter les timing attacks lorsque l'email est inconnu.
+const HASH_FACTICE = '$2b$10$CwTycUXWue0Thq9StjUM0uJ8f6Yh2qkCvDxYgvD5ZcLjKxP4ZcDa6';
 
 function secretSession(): string {
   const secret = process.env.SESSION_SECRET;
@@ -23,10 +32,11 @@ function secretSession(): string {
 }
 
 function normaliserEmail(email: unknown): string {
-  if (typeof email !== 'string' || !EMAIL_RE.test(email.trim())) {
-    throw new ErreurAuth(400, 'Adresse e-mail invalide.');
-  }
-  return email.trim().toLowerCase();
+  if (typeof email !== 'string') throw new ErreurAuth(400, 'Adresse e-mail invalide.');
+  const trimme = email.trim();
+  if (trimme.length > EMAIL_MAX_LONGUEUR) throw new ErreurAuth(400, 'Adresse e-mail invalide.');
+  if (!EMAIL_RE.test(trimme)) throw new ErreurAuth(400, 'Adresse e-mail invalide.');
+  return trimme.toLowerCase();
 }
 
 // Utilisée à la connexion : juste des bornes de taille (format), jamais de règle de robustesse —
@@ -120,7 +130,11 @@ export async function connecter(pool: Pool, emailBrut: unknown, mdpBrut: unknown
     [email]
   );
   // Même message que « mot de passe incorrect » : ne pas révéler si l'email existe en base.
-  if (rows.length === 0) throw new ErreurAuth(401, 'E-mail ou mot de passe incorrect.');
+  if (rows.length === 0) {
+    // Dummy bcrypt pour aligner le temps de réponse avec un email existant (anti-timing attack).
+    await bcrypt.compare(motDePasse, HASH_FACTICE);
+    throw new ErreurAuth(401, 'E-mail ou mot de passe incorrect.');
+  }
   const u = rows[0];
 
   if (u.login_locked_until && new Date(u.login_locked_until) > new Date()) {

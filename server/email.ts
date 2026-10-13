@@ -117,3 +117,13 @@ export function emailCodeReinitialisation(code: string): { sujet: string; html: 
   const texte = `Réinitialisation de mot de passe\n\nVotre code : ${code}\n\nCe code expire dans 15 minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail — votre mot de passe actuel reste inchangé.\n\n— Empower Doctor`;
   return { sujet: 'Réinitialisation de votre mot de passe — Empower Doctor', html: enveloppe(contenu), texte };
 }
+
+export function emailInvitationAdmin(urlActivation: string): { sujet: string; html: string; texte: string } {
+  const contenu = `
+    <p style="margin:0 0 4px;font-size:16px;font-weight:700;color:#0f172a;">Invitation au dashboard Empower Doctor</p>
+    <p style="margin:12px 0 0;font-size:14px;color:#475569;line-height:1.6;">Vous avez été invité(e) à consulter le dashboard interne d'Empower Doctor (accès en lecture seule). Cliquez sur le lien ci-dessous pour choisir votre mot de passe et activer votre accès.</p>
+    <p style="margin:20px 0 0;font-size:14px;"><a href="${urlActivation}" style="color:#2563eb;font-weight:600;">Activer mon accès →</a></p>
+    <p style="margin:16px 0 0;font-size:13px;color:#94a3b8;line-height:1.6;">Ce lien est valable 7 jours. Si vous n'attendiez pas cette invitation, ignorez cet e-mail.</p>`;
+  const texte = `Invitation au dashboard Empower Doctor\n\nVous avez été invité(e) à consulter le dashboard interne d'Empower Doctor (accès en lecture seule). Ouvrez le lien ci-dessous pour choisir votre mot de passe :\n\n${urlActivation}\n\nCe lien est valable 7 jours. Si vous n'attendiez pas cette invitation, ignorez cet e-mail.\n\n— Empower Doctor`;
+  return { sujet: 'Invitation au dashboard Empower Doctor', html: enveloppe(contenu), texte };
+}
