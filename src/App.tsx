@@ -23,8 +23,9 @@ import LoadingScreen from './components/LoadingScreen';
 // Admin dashboard : lazy-loaded. Les médecins qui n'ouvrent jamais /admin ne téléchargent pas
 // Recharts + les composants admin + toute la logique associée (~200 kB).
 const AdminShell = React.lazy(() => import('./components/admin/AdminShell'));
-// Vitrine : lazy aussi — un visiteur qui va directement sur /app n'a pas besoin du bundle marketing.
-const VitrinePage = React.lazy(() => import('./components/vitrine/VitrinePage'));
+// Vitrine en import direct : c'est la page d'accueil (/), un lazy forcerait un "Chargement…" visible
+// avant le premier paint. Le bundle vitrine est léger (pas de Leaflet, pas de Recharts).
+import VitrinePage from './components/vitrine/VitrinePage';
 import { Plus, Database, Info, Heart } from 'lucide-react';
 
 export default function App() {
@@ -218,14 +219,10 @@ export default function App() {
   }
 
   // Site vitrine (marketing) à la racine /. L'app médecins (annuaire, carte, scoring, business
-  // plan) vit sur /app. Le bundle vitrine est lazy pour ne pas pénaliser les visiteurs qui
-  // arrivent directement sur /app via un lien partagé.
+  // plan) vit sur /app. Import direct (pas de lazy) pour éviter un flash "Chargement…" sur la
+  // landing — le bundle vitrine est léger.
   if (route === '/') {
-    return (
-      <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-500">Chargement…</div>}>
-        <VitrinePage naviguer={naviguer} />
-      </React.Suspense>
-    );
+    return <VitrinePage naviguer={naviguer} />;
   }
 
   if (loadError) {
