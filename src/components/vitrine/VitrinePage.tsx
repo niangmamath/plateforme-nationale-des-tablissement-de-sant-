@@ -103,7 +103,7 @@ function Header({
 
         <div className="hidden md:flex items-center gap-3">
           <button
-            onClick={() => naviguer('/app')}
+            onClick={() => naviguer('/plateforme')}
             className="inline-flex items-center gap-1.5 text-[13px] font-semibold px-4 py-2.5 rounded-full bg-[#2563eb] text-[#f8fafc] hover:bg-[#1d4ed8] transition-colors"
           >
             Ouvrir la plateforme <ArrowUpRight className="w-3.5 h-3.5" />
@@ -126,7 +126,7 @@ function Header({
               <a key={c} href={c} onClick={e => { e.preventDefault(); allerVers(c); }} className="px-3 py-2.5 rounded-lg text-sm font-medium text-[#0f172a]/80 hover:bg-[#0f172a]/5">{l}</a>
             ))}
             <button
-              onClick={() => { setMenuMobile(false); naviguer('/app'); }}
+              onClick={() => { setMenuMobile(false); naviguer('/plateforme'); }}
               className="mt-3 inline-flex items-center justify-center gap-2 text-sm font-semibold px-4 py-3 rounded-full bg-[#2563eb] text-[#f8fafc]"
             >
               Ouvrir la plateforme <ArrowUpRight className="w-4 h-4" />
@@ -166,7 +166,7 @@ function Hero({ naviguer, allerVers }: { naviguer: (c: string) => void; allerVer
 
             <div className="mt-11 flex flex-wrap items-center gap-4">
               <button
-                onClick={() => naviguer('/app')}
+                onClick={() => naviguer('/plateforme')}
                 className="group inline-flex items-center gap-3 text-[14px] font-semibold px-6 py-4 rounded-full bg-[#2563eb] text-[#f8fafc] hover:bg-[#1d4ed8] transition-colors"
               >
                 Explorer la plateforme
@@ -528,7 +528,7 @@ function Packages({ naviguer, allerVers }: { naviguer: (c: string) => void; alle
               'Signalement de correction',
             ]}
             ctaLabel="Essayer gratuitement"
-            onCta={() => naviguer('/app')}
+            onCta={() => naviguer('/plateforme')}
           />
           <CardPackage
             nom="Package 2 — Accompagnement"
@@ -832,7 +832,7 @@ function Footer({ naviguer, allerVers }: { naviguer: (c: string) => void; allerV
             <div>
               <h4 className="text-[11px] font-semibold uppercase tracking-widest text-[#0f172a]/50 mb-4">Plateforme</h4>
               <ul className="space-y-3 text-[14px]">
-                <li><button onClick={() => naviguer('/app')} className="text-[#0f172a]/80 hover:text-[#0f172a]">Annuaire & carte</button></li>
+                <li><button onClick={() => naviguer('/plateforme')} className="text-[#0f172a]/80 hover:text-[#0f172a]">Annuaire & carte</button></li>
                 <li><button onClick={() => naviguer('/simulateur-credit')} className="text-[#0f172a]/80 hover:text-[#0f172a]">Simulateur de crédit</button></li>
               </ul>
             </div>

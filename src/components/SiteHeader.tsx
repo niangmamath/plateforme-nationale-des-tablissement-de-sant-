@@ -14,9 +14,9 @@ interface LienNav {
 }
 
 const LIENS: LienNav[] = [
-  { cible: '/app', label: 'Annuaire & carte', icone: Map },
-  { cible: '/app#analytics-section', label: 'Analytique & Intelligence Géospatiale', icone: BarChart3 },
-  { cible: '/app#scoring-section', label: 'Où ouvrir + Business Plan', icone: MapPin },
+  { cible: '/plateforme', label: 'Annuaire & carte', icone: Map },
+  { cible: '/plateforme#analytics-section', label: 'Analytique & Intelligence Géospatiale', icone: BarChart3 },
+  { cible: '/plateforme#scoring-section', label: 'Où ouvrir + Business Plan', icone: MapPin },
   { cible: '/simulateur-credit', label: 'Simulateur de crédit', icone: Landmark },
 ];
 

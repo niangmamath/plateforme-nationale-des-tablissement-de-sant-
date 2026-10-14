@@ -196,12 +196,12 @@ export default function App() {
     setSelectedId(establishment.id);
   };
 
-  // Section de l'app médecins visée par un lien du menu (ex. "/app#scoring-section") : on y défile
+  // Section de l'app médecins visée par un lien du menu (ex. "/plateforme#scoring-section") : on y défile
   // une fois ses données chargées, plutôt que de compter sur le défilement natif du navigateur qui,
   // lui, ne sait pas attendre qu'une section arrivée par fetch existe déjà dans le DOM. Sans ancre
-  // (lien "Annuaire & carte", qui garde une URL "/app" propre, sans #), on remonte simplement en haut.
+  // (lien "Annuaire & carte", qui garde une URL "/plateforme" propre, sans #), on remonte simplement en haut.
   useEffect(() => {
-    if (route !== '/app' || isLoading) return;
+    if (route !== '/plateforme' || isLoading) return;
     if (ancre) document.getElementById(ancre)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     else window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [route, ancre, isLoading]);
@@ -270,7 +270,7 @@ export default function App() {
 
   // Route inconnue → la vitrine. Fait avant le gate isLoading pour éviter un LoadingScreen aux
   // visiteurs qui n'ont rien demandé. L'app médecins ne s'affiche que sur /app.
-  if (route !== '/app') {
+  if (route !== '/plateforme') {
     naviguer('/');
     return <div className="min-h-screen flex items-center justify-center text-gray-500">Redirection…</div>;
   }

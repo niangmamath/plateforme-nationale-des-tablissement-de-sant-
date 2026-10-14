@@ -15,7 +15,7 @@ const META_PAR_ROUTE: Record<string, MetaRoute> = {
     titre: 'Empower Doctor — Guichet unique des professionnels de santé',
     description: "Empower Doctor accompagne les médecins de l'implantation à la gestion de leur cabinet : scoring de zone, business plan, financement, statut juridique et comptable.",
   },
-  '/app': {
+  '/plateforme': {
     titre: 'Plateforme — Empower Doctor',
     description: "Carte interactive, scoring de zone, générateur de business plan et simulateurs de crédit pour choisir l'implantation de votre cabinet médical au Maroc.",
   },
