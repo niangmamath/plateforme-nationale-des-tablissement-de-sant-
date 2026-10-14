@@ -1,14 +1,13 @@
 // Métadonnées par route — le site n'a pas de rendu côté serveur : index.html sert le même <title>,
-// la même description et le même <link rel="canonical"> pour toutes les routes (utile pour /, la
-// seule page qui existait quand ces balises ont été écrites). Depuis que /simulateur-credit est une
-// vraie URL, il lui faut son propre titre et sa propre URL canonique, mis à jour ici au chargement
-// de la page — Googlebot exécute le JavaScript avant d'indexer, donc ce correctif suffit pour
-// l'indexation. Il ne change rien aux aperçus de partage (Facebook, LinkedIn, WhatsApp...) : ces
-// robots-là ne lisent que le HTML statique de index.html, jamais le JavaScript — corriger ça
-// demanderait un rendu par route côté serveur, un chantier à part.
+// la même description et le même <link rel="canonical"> pour toutes les routes. On patche ces
+// balises au chargement de la page selon la route. Googlebot exécute le JavaScript avant
+// d'indexer, donc ce correctif suffit pour l'indexation. Il ne change rien aux aperçus de partage
+// (Facebook, LinkedIn, WhatsApp...) : ces robots-là ne lisent que le HTML statique de index.html,
+// jamais le JavaScript — corriger ça demanderait un rendu par route côté serveur, un chantier à part.
 export interface MetaRoute {
   titre: string;
   description: string;
+  noindex?: boolean; // true = indique aux moteurs de ne pas indexer cette page
 }
 
 const META_PAR_ROUTE: Record<string, MetaRoute> = {
@@ -24,6 +23,13 @@ const META_PAR_ROUTE: Record<string, MetaRoute> = {
     titre: 'Simulateur de crédit — Empower Doctor',
     description: "Calculez la mensualité, le coût total et le tableau d'amortissement mois par mois d'un crédit professionnel (local, équipement...).",
   },
+  // Dashboard admin : noindex (défense en profondeur). robots.txt bloque déjà /admin au niveau
+  // crawl, mais si une URL fuit via un lien externe, les moteurs respecteront aussi ce signal-ci.
+  '/admin': {
+    titre: 'Admin — Empower Doctor',
+    description: 'Accès réservé.',
+    noindex: true,
+  },
 };
 
 export function appliquerMeta(route: string): void {
@@ -36,4 +42,14 @@ export function appliquerMeta(route: string): void {
 
   const canonical = document.querySelector('link[rel="canonical"]');
   if (canonical) canonical.setAttribute('href', base + route);
+
+  // meta robots : patche la balise existante (celle d'index.html) selon la route. On la mute dans
+  // les deux sens pour qu'une navigation /admin → / ne laisse pas le noindex traîner.
+  let robots = document.querySelector('meta[name="robots"]');
+  if (!robots) {
+    robots = document.createElement('meta');
+    robots.setAttribute('name', 'robots');
+    document.head.appendChild(robots);
+  }
+  robots.setAttribute('content', meta.noindex ? 'noindex, nofollow' : 'index, follow');
 }
