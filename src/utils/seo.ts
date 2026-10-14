@@ -12,7 +12,7 @@ export interface MetaRoute {
 
 const META_PAR_ROUTE: Record<string, MetaRoute> = {
   '/': {
-    titre: 'Empower Doctor — Guichet unique des professionnels de santé',
+    titre: 'Empower Doctor — Où ouvrir, comment financer, par où commencer',
     description: "Empower Doctor accompagne les médecins de l'implantation à la gestion de leur cabinet : scoring de zone, business plan, financement, statut juridique et comptable.",
   },
   '/plateforme': {
