@@ -19,7 +19,13 @@ export class ErreurAdminAuth extends Error {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const EMAIL_MAX_LONGUEUR = 254; // RFC 5321
 const COOKIE_NOM = 'admin_session';
-const DUREE_SESSION_JOURS = 6;
+
+// Session sliding : chaque action authentifiée prolonge le cookie de DUREE_SESSION_HEURES, dans la
+// limite de MAX_SESSION_HEURES depuis le login initial. Après MAX_SESSION_HEURES, re-login
+// obligatoire. Rationnel : 6 jours (ancienne valeur) exposait trop longtemps un cookie volé pour
+// un panel admin — OWASP recommande 2-12h pour un rôle à privilèges.
+const DUREE_SESSION_HEURES = 12;
+const MAX_SESSION_HEURES = 24;
 
 // Protection brute-force par COMPTE : 5 essais → verrou 15 min (login_fail_count/login_locked_until).
 const LOGIN_ESSAIS_MAX = 5;
@@ -217,19 +223,53 @@ export async function changerMotDePasseAdmin(
 }
 
 // --- Cookie & JWT ---
+// Le payload porte deux expirations : `exp` (sliding, 12h, renouvelé à chaque requête via
+// administrateurDepuisCookies+ ajout d'un setCookie) et `maxExp` (absolu, 24h depuis le 1er login,
+// JAMAIS renouvelé — oblige à se reconnecter au bout de 24h même si la session est active).
+interface JwtPayloadAdmin {
+  sub: number;
+  email: string;
+  role: RoleAdmin;
+  maxExp: number; // epoch secondes
+}
+
 export function creerJetonAdmin(a: AdminPublic): string {
-  return jwt.sign({ sub: a.id, email: a.email, role: a.role }, secretSession(), {
-    expiresIn: `${DUREE_SESSION_JOURS}d`,
-  });
+  const maintenantSec = Math.floor(Date.now() / 1000);
+  const maxExp = maintenantSec + MAX_SESSION_HEURES * 3600;
+  return jwt.sign(
+    { sub: a.id, email: a.email, role: a.role, maxExp },
+    secretSession(),
+    { expiresIn: `${DUREE_SESSION_HEURES}h` },
+  );
+}
+
+// Rafraîchit un jeton (sliding) sans dépasser maxExp. Rend null si on a atteint la limite absolue
+// — l'appelant doit renvoyer un cookie de déconnexion dans ce cas.
+export function rafraichirJetonAdmin(payload: JwtPayloadAdmin): string | null {
+  const maintenantSec = Math.floor(Date.now() / 1000);
+  if (payload.maxExp <= maintenantSec) return null;
+  // On capsule la nouvelle expiration par maxExp pour ne jamais la dépasser.
+  const nouvelExp = Math.min(maintenantSec + DUREE_SESSION_HEURES * 3600, payload.maxExp);
+  const dureeRestantesSec = nouvelExp - maintenantSec;
+  return jwt.sign(
+    { sub: payload.sub, email: payload.email, role: payload.role, maxExp: payload.maxExp },
+    secretSession(),
+    { expiresIn: dureeRestantesSec },
+  );
 }
 
 export function cookieAdminSession(jeton: string): string {
+  // On lit la vraie expiration dans le jeton pour que maxAge du cookie suive, sinon un cookie
+  // envoyé par rafraichirJetonAdmin près de maxExp aurait un maxAge trop long.
+  const decoded = jwt.decode(jeton) as { exp?: number } | null;
+  const expSec = decoded?.exp ?? Math.floor(Date.now() / 1000) + DUREE_SESSION_HEURES * 3600;
+  const maxAge = Math.max(0, expSec - Math.floor(Date.now() / 1000));
   return serialize(COOKIE_NOM, jeton, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
-    maxAge: DUREE_SESSION_JOURS * 24 * 60 * 60,
+    maxAge,
   });
 }
 
@@ -243,16 +283,28 @@ export function cookieDeconnexionAdmin(): string {
   });
 }
 
-// Renvoie l'admin courant à partir du cookie, ou null si absent/invalide/expiré.
+export interface AdminSession {
+  id: number;
+  email: string;
+  role: RoleAdmin;
+  maxExp: number;
+  payload: JwtPayloadAdmin; // pour rafraichirJetonAdmin
+}
+
+// Renvoie l'admin courant + le payload JWT (nécessaire au sliding) ou null si invalide/expiré.
 // Ne lit JAMAIS le cookie "session" des médecins — seul "admin_session" est accepté.
-export function administrateurDepuisCookies(cookieHeader: string | undefined): { id: number; email: string; role: RoleAdmin } | null {
+export function administrateurDepuisCookies(cookieHeader: string | undefined): AdminSession | null {
   if (!cookieHeader) return null;
   const jeton = parse(cookieHeader)[COOKIE_NOM];
   if (!jeton) return null;
   try {
-    const payload = jwt.verify(jeton, secretSession()) as unknown as { sub: number; email: string; role: RoleAdmin };
+    const payload = jwt.verify(jeton, secretSession()) as unknown as JwtPayloadAdmin;
     if (payload.role !== 'admin') return null;
-    return { id: payload.sub, email: payload.email, role: payload.role };
+    if (!payload.maxExp || typeof payload.maxExp !== 'number') return null;
+    // Garde-fou : le maxExp absolu peut être dépassé si l'horloge s'est décalée entre le signage et
+    // la vérification (rare, mais possible). jwt.verify s'occupe de l'exp sliding, pas de maxExp.
+    if (payload.maxExp <= Math.floor(Date.now() / 1000)) return null;
+    return { id: payload.sub, email: payload.email, role: payload.role, maxExp: payload.maxExp, payload };
   } catch {
     return null;
   }

@@ -23,6 +23,8 @@ import LoadingScreen from './components/LoadingScreen';
 // Admin dashboard : lazy-loaded. Les médecins qui n'ouvrent jamais /admin ne téléchargent pas
 // Recharts + les composants admin + toute la logique associée (~200 kB).
 const AdminShell = React.lazy(() => import('./components/admin/AdminShell'));
+// Vitrine : lazy aussi — un visiteur qui va directement sur /app n'a pas besoin du bundle marketing.
+const VitrinePage = React.lazy(() => import('./components/vitrine/VitrinePage'));
 import { Plus, Database, Info, Heart } from 'lucide-react';
 
 export default function App() {
@@ -193,12 +195,12 @@ export default function App() {
     setSelectedId(establishment.id);
   };
 
-  // Section de l'accueil visée par un lien du menu (ex. "/#scoring-section") : on y défile une fois
-  // ses données chargées, plutôt que de compter sur le défilement natif du navigateur qui, lui, ne
-  // sait pas attendre qu'une section arrivée par fetch existe déjà dans le DOM. Sans ancre (lien
-  // "Annuaire & carte", qui garde une URL "/" propre, sans #), on remonte simplement en haut.
+  // Section de l'app médecins visée par un lien du menu (ex. "/app#scoring-section") : on y défile
+  // une fois ses données chargées, plutôt que de compter sur le défilement natif du navigateur qui,
+  // lui, ne sait pas attendre qu'une section arrivée par fetch existe déjà dans le DOM. Sans ancre
+  // (lien "Annuaire & carte", qui garde une URL "/app" propre, sans #), on remonte simplement en haut.
   useEffect(() => {
-    if (route !== '/' || isLoading) return;
+    if (route !== '/app' || isLoading) return;
     if (ancre) document.getElementById(ancre)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     else window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [route, ancre, isLoading]);
@@ -211,6 +213,17 @@ export default function App() {
     return (
       <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-500">Chargement…</div>}>
         <AdminShell />
+      </React.Suspense>
+    );
+  }
+
+  // Site vitrine (marketing) à la racine /. L'app médecins (annuaire, carte, scoring, business
+  // plan) vit sur /app. Le bundle vitrine est lazy pour ne pas pénaliser les visiteurs qui
+  // arrivent directement sur /app via un lien partagé.
+  if (route === '/') {
+    return (
+      <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-500">Chargement…</div>}>
+        <VitrinePage naviguer={naviguer} />
       </React.Suspense>
     );
   }
@@ -256,6 +269,13 @@ export default function App() {
         </main>
       </div>
     );
+  }
+
+  // Route inconnue → la vitrine. Fait avant le gate isLoading pour éviter un LoadingScreen aux
+  // visiteurs qui n'ont rien demandé. L'app médecins ne s'affiche que sur /app.
+  if (route !== '/app') {
+    naviguer('/');
+    return <div className="min-h-screen flex items-center justify-center text-gray-500">Redirection…</div>;
   }
 
   if (isLoading || !selectedCountry) {

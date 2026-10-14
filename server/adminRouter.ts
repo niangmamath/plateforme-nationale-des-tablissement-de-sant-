@@ -6,6 +6,7 @@ import type { Pool } from 'pg';
 import {
   connecterAdmin, changerMotDePasseAdmin,
   creerJetonAdmin, cookieAdminSession, cookieDeconnexionAdmin, administrateurDepuisCookies,
+  rafraichirJetonAdmin,
   ErreurAdminAuth, loginAdminRateLimit,
 } from './adminAuth.js';
 import { obtenirStats, estSectionValide, ErreurAdminStats } from './adminStats.js';
@@ -17,6 +18,24 @@ import {
   listerMessages, envoyerMessage, marquerLuJusquA, supprimerMessage, compterNonLus,
   ErreurMessages,
 } from './adminMessages.js';
+import { verifierRateLimitAdmin } from './adminRateLimitDB.js';
+
+// Seuils de rate limit par admin, par minute. Choisis large pour la navigation + polling normale,
+// mais serrés sur les actions coûteuses (email, écriture BDD).
+const RL_LECTURE = 120;      // /stats, /signalements, /messages (GET)
+const RL_ECRITURE_LEGERE = 30;  // /messages POST, /messages/lu, /messages/non-lus (polling 20s)
+const RL_ECRITURE_LOURDE = 10;  // /password, /signalements PATCH, /signalements/.../repondre
+
+async function garderRateLimit(
+  pool: Pool, adminId: number, routeId: string, seuil: number,
+): Promise<AdminRes | null> {
+  const r = await verifierRateLimitAdmin(pool, adminId, routeId, seuil);
+  if (r.autorise) return null;
+  return {
+    status: 429,
+    body: { error: `Trop de requêtes — ralentis. Réessaye dans ${r.retryAfterSec} s.`, retry_after_sec: r.retryAfterSec },
+  };
+}
 
 export interface AdminReq {
   method: string | undefined;
@@ -53,7 +72,22 @@ function ecrireCache(cle: string, data: unknown): void {
 }
 
 // Dispatcher principal. L'appelant (Express ou Vercel) adapte juste l'entrée et la sortie.
+// Wrap autour du dispatcher : si la requête était authentifiée et que le dispatcher n'a pas posé
+// de setCookie lui-même (ex: /login, /logout), on émet un cookie "sliding" rafraîchi — tant que
+// maxExp (24h absolu) n'est pas atteint. Sinon on déconnecte.
 export async function routerAdmin(pool: Pool, req: AdminReq): Promise<AdminRes> {
+  const result = await routerAdminDispatcher(pool, req);
+  if (!result.setCookie) {
+    const session = administrateurDepuisCookies(req.cookieHeader);
+    if (session) {
+      const nouveauJeton = rafraichirJetonAdmin(session.payload);
+      result.setCookie = nouveauJeton ? cookieAdminSession(nouveauJeton) : cookieDeconnexionAdmin();
+    }
+  }
+  return result;
+}
+
+async function routerAdminDispatcher(pool: Pool, req: AdminReq): Promise<AdminRes> {
   const { method, path } = req;
 
   try {
@@ -86,6 +120,8 @@ export async function routerAdmin(pool: Pool, req: AdminReq): Promise<AdminRes> 
     if (method === 'POST' && path === '/password') {
       const a = administrateurDepuisCookies(req.cookieHeader);
       if (!a) return { status: 401, body: { error: 'Non connecté.' } };
+      const bloque = await garderRateLimit(pool, a.id, 'password', RL_ECRITURE_LOURDE);
+      if (bloque) return bloque;
       const { ancien, nouveau } = req.body ?? {};
       await changerMotDePasseAdmin(pool, a.id, ancien, nouveau);
       return { status: 200, body: { ok: true } };
@@ -95,6 +131,8 @@ export async function routerAdmin(pool: Pool, req: AdminReq): Promise<AdminRes> 
     if (method === 'GET' && path === '/messages') {
       const a = administrateurDepuisCookies(req.cookieHeader);
       if (!a) return { status: 401, body: { error: 'Non connecté.' } };
+      const bloque = await garderRateLimit(pool, a.id, 'messages:get', RL_LECTURE);
+      if (bloque) return bloque;
       const limite = typeof req.query.limite === 'string' ? Number(req.query.limite) : undefined;
       return { status: 200, body: await listerMessages(pool, a.id, limite) };
     }
@@ -102,12 +140,16 @@ export async function routerAdmin(pool: Pool, req: AdminReq): Promise<AdminRes> 
     if (method === 'GET' && path === '/messages/non-lus') {
       const a = administrateurDepuisCookies(req.cookieHeader);
       if (!a) return { status: 401, body: { error: 'Non connecté.' } };
+      const bloque = await garderRateLimit(pool, a.id, 'messages:non-lus', RL_ECRITURE_LEGERE);
+      if (bloque) return bloque;
       return { status: 200, body: await compterNonLus(pool, a.id) };
     }
 
     if (method === 'POST' && path === '/messages') {
       const a = administrateurDepuisCookies(req.cookieHeader);
       if (!a) return { status: 401, body: { error: 'Non connecté.' } };
+      const bloque = await garderRateLimit(pool, a.id, 'messages:post', RL_ECRITURE_LEGERE);
+      if (bloque) return bloque;
       const { contenu } = req.body ?? {};
       const m = await envoyerMessage(pool, a.id, contenu);
       return { status: 200, body: m };
@@ -116,6 +158,8 @@ export async function routerAdmin(pool: Pool, req: AdminReq): Promise<AdminRes> 
     if (method === 'POST' && path === '/messages/lu') {
       const a = administrateurDepuisCookies(req.cookieHeader);
       if (!a) return { status: 401, body: { error: 'Non connecté.' } };
+      const bloque = await garderRateLimit(pool, a.id, 'messages:lu', RL_ECRITURE_LEGERE);
+      if (bloque) return bloque;
       const { dernier_id } = req.body ?? {};
       await marquerLuJusquA(pool, a.id, Number(dernier_id ?? 0));
       return { status: 200, body: { ok: true } };
@@ -125,6 +169,8 @@ export async function routerAdmin(pool: Pool, req: AdminReq): Promise<AdminRes> 
     if (method === 'DELETE' && matchSupprMsg) {
       const a = administrateurDepuisCookies(req.cookieHeader);
       if (!a) return { status: 401, body: { error: 'Non connecté.' } };
+      const bloque = await garderRateLimit(pool, a.id, 'messages:delete', RL_ECRITURE_LEGERE);
+      if (bloque) return bloque;
       await supprimerMessage(pool, a.id, Number(matchSupprMsg[1]));
       return { status: 200, body: { ok: true } };
     }
@@ -133,6 +179,8 @@ export async function routerAdmin(pool: Pool, req: AdminReq): Promise<AdminRes> 
     if (method === 'GET' && path === '/signalements') {
       const a = administrateurDepuisCookies(req.cookieHeader);
       if (!a) return { status: 401, body: { error: 'Non connecté.' } };
+      const bloque = await garderRateLimit(pool, a.id, 'signalements:list', RL_LECTURE);
+      if (bloque) return bloque;
       const q = typeof req.query.q === 'string' ? req.query.q : undefined;
       const statut = typeof req.query.statut === 'string' ? req.query.statut : undefined;
       const limite = typeof req.query.limite === 'string' ? Number(req.query.limite) : undefined;
@@ -145,6 +193,8 @@ export async function routerAdmin(pool: Pool, req: AdminReq): Promise<AdminRes> 
     if (method === 'GET' && matchDetail) {
       const a = administrateurDepuisCookies(req.cookieHeader);
       if (!a) return { status: 401, body: { error: 'Non connecté.' } };
+      const bloque = await garderRateLimit(pool, a.id, 'signalements:get', RL_LECTURE);
+      if (bloque) return bloque;
       const id = Number(matchDetail[1]);
       const s = await obtenirSignalement(pool, id);
       if (!s) return { status: 404, body: { error: 'Signalement introuvable.' } };
@@ -154,6 +204,8 @@ export async function routerAdmin(pool: Pool, req: AdminReq): Promise<AdminRes> 
     if (method === 'PATCH' && matchDetail) {
       const a = administrateurDepuisCookies(req.cookieHeader);
       if (!a) return { status: 401, body: { error: 'Non connecté.' } };
+      const bloque = await garderRateLimit(pool, a.id, 'signalements:patch', RL_ECRITURE_LOURDE);
+      if (bloque) return bloque;
       const id = Number(matchDetail[1]);
       const { statut, note_interne } = req.body ?? {};
       const s = await mettreAJourSignalement(pool, a.id, id, { statut, note_interne });
@@ -165,6 +217,8 @@ export async function routerAdmin(pool: Pool, req: AdminReq): Promise<AdminRes> 
     if (method === 'POST' && matchRepondre) {
       const a = administrateurDepuisCookies(req.cookieHeader);
       if (!a) return { status: 401, body: { error: 'Non connecté.' } };
+      const bloque = await garderRateLimit(pool, a.id, 'signalements:repondre', RL_ECRITURE_LOURDE);
+      if (bloque) return bloque;
       const id = Number(matchRepondre[1]);
       const { message } = req.body ?? {};
       await repondreSignalement(pool, a.id, id, String(message ?? ''));
@@ -175,6 +229,8 @@ export async function routerAdmin(pool: Pool, req: AdminReq): Promise<AdminRes> 
     if (method === 'GET' && path === '/stats') {
       const a = administrateurDepuisCookies(req.cookieHeader);
       if (!a) return { status: 401, body: { error: 'Non connecté.' } };
+      const bloque = await garderRateLimit(pool, a.id, 'stats', RL_LECTURE);
+      if (bloque) return bloque;
       const section = req.query.section;
       if (!estSectionValide(section)) return { status: 400, body: { error: 'Section inconnue.' } };
       const cle = `${section}:${a.role}`;

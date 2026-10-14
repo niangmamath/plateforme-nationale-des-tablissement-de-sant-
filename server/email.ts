@@ -14,7 +14,10 @@ const RESEND_API = 'https://api.resend.com/emails';
 // presque toujours les deux, en multipart/alternative) — ça ne suffit pas à soi seul à éviter le
 // dossier spam (la réputation d'un domaine/expéditeur tout neuf y contribue aussi, et se construit
 // avec le temps), mais ça fait partie des signaux qu'on contrôle.
-export async function envoyerEmail(destinataire: string, sujet: string, html: string, texte: string): Promise<void> {
+export async function envoyerEmail(
+  destinataire: string, sujet: string, html: string, texte: string,
+  options?: { replyTo?: string },
+): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.error(`RESEND_API_KEY non définie — e-mail « ${sujet} » non envoyé à ${destinataire}.`);
@@ -22,10 +25,12 @@ export async function envoyerEmail(destinataire: string, sujet: string, html: st
   }
   const from = process.env.RESEND_FROM || 'Empower Doctor <onboarding@resend.dev>';
   try {
+    const payload: Record<string, unknown> = { from, to: destinataire, subject: sujet, html, text: texte };
+    if (options?.replyTo) payload.reply_to = options.replyTo;
     const res = await fetch(RESEND_API, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to: destinataire, subject: sujet, html, text: texte }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const corps = await res.text().catch(() => '');
@@ -116,6 +121,26 @@ export function emailCodeReinitialisation(code: string): { sujet: string; html: 
     <p style="margin:0;font-size:13px;color:#94a3b8;line-height:1.6;">Ce code expire dans 15 minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail — votre mot de passe actuel reste inchangé.</p>`;
   const texte = `Réinitialisation de mot de passe\n\nVotre code : ${code}\n\nCe code expire dans 15 minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail — votre mot de passe actuel reste inchangé.\n\n— Empower Doctor`;
   return { sujet: 'Réinitialisation de votre mot de passe — Empower Doctor', html: enveloppe(contenu), texte };
+}
+
+// Formulaire de contact du site vitrine. L'e-mail est envoyé à l'équipe (adresse configurée via
+// CONTACT_RECIPIENT_EMAIL, défaut : la boîte Abderrahmane). On met l'adresse du visiteur en
+// Reply-To côté handler pour qu'un simple "Répondre" dans Gmail lui réponde directement.
+export function emailContactVitrine(nom: string, email: string, sujet: string, message: string): { sujet: string; html: string; texte: string } {
+  const sujetFinal = sujet.trim() || 'Nouveau message depuis le site vitrine';
+  const paragraphes = message.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  const htmlCorps = paragraphes
+    .map(p => `<p style="margin:0 0 12px;font-size:14px;color:#334155;line-height:1.6;">${echappe(p).replace(/\n/g, '<br>')}</p>`)
+    .join('');
+  const contenu = `
+    <p style="margin:0 0 4px;font-size:16px;font-weight:700;color:#0f172a;">${echappe(sujetFinal)}</p>
+    <p style="margin:12px 0 20px;font-size:13px;color:#64748b;">
+      De <strong style="color:#0f172a;">${echappe(nom)}</strong> &lt;${echappe(email)}&gt;
+    </p>
+    ${htmlCorps}
+    <p style="margin:20px 0 0;padding-top:16px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;">Pour répondre, utilisez simplement « Répondre » : l'adresse du visiteur est en Reply-To.</p>`;
+  const texte = `${sujetFinal}\n\nDe ${nom} <${email}>\n\n${message}\n\n— Formulaire de contact Empower Doctor`;
+  return { sujet: `[Contact] ${sujetFinal}`, html: enveloppe(contenu), texte };
 }
 
 // Réponse de l'équipe à un signalement. Le `message` est écrit par l'admin dans le dashboard et

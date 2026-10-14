@@ -101,6 +101,22 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
+// Formulaire de contact du site vitrine. Rate limit par IP + validation dans server/contact.ts.
+app.post('/api/contact', async (req, res) => {
+  try {
+    const { envoyerContact, ErreurContact } = await import('./contact.js');
+    await envoyerContact(req.body, extraireIp(req.headers['x-forwarded-for'], req.ip));
+    res.status(200).json({ ok: true });
+  } catch (err: any) {
+    if (err && err.constructor && err.constructor.name === 'ErreurContact') {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    console.error('Erreur /api/contact :', err);
+    res.status(500).json({ error: 'Erreur serveur, réessayez plus tard.' });
+  }
+});
+
 // Signalement utilisateur (correction d'une fiche ou établissement manquant) — endpoint public
 // en écriture : validation stricte + limite de fréquence par IP dans server/signalements.ts.
 app.post('/api/signalements', async (req, res) => {
