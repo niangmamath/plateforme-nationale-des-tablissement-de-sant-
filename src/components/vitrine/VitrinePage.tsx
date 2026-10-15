@@ -186,7 +186,7 @@ function Hero({ naviguer, allerVers }: { naviguer: (c: string) => void; allerVer
 
           {/* Colonne visuel : vraie capture de la plateforme (carte Leaflet + pins + légende) */}
           <div className="lg:col-span-5 relative">
-            <CadreNavigateur src="/vitrine/carte-pins.png" alt="Carte interactive des établissements de santé" accent="#2563eb" />
+            <CadreNavigateur src="/vitrine/carte-pins.webp" alt="Carte interactive des établissements de santé" accent="#2563eb" prioritaire />
           </div>
         </div>
       </div>
@@ -198,9 +198,11 @@ function Hero({ naviguer, allerVers }: { naviguer: (c: string) => void; allerVer
 // Barre supérieure avec feux de signalisation + fausse barre d'URL. Donne une impression produit
 // sans mentir : les captures qu'on affiche viennent vraiment de la plateforme.
 function CadreNavigateur({
-  src, alt, url = 'empower-doctor.vercel.app', accent = '#2563eb', className = '',
+  src, alt, url = 'empower-doctor.vercel.app', accent = '#2563eb', className = '', prioritaire = false,
 }: {
   src: string; alt: string; url?: string; accent?: string; className?: string;
+  /** true pour une image above-the-fold : chargement eager + fetchpriority high (hero LCP). */
+  prioritaire?: boolean;
 }) {
   return (
     <div className={`relative ${className}`}>
@@ -218,7 +220,14 @@ function CadreNavigateur({
           </div>
           <span className="w-8" />
         </div>
-        <img src={src} alt={alt} loading="lazy" className="block w-full h-auto" />
+        <img
+          src={src}
+          alt={alt}
+          loading={prioritaire ? 'eager' : 'lazy'}
+          fetchPriority={prioritaire ? 'high' : 'auto'}
+          decoding="async"
+          className="block w-full h-auto"
+        />
       </div>
     </div>
   );
@@ -327,7 +336,7 @@ function VideoDemo() {
               muted
               playsInline
               preload="metadata"
-              poster="/vitrine/accueil-kpis.png"
+              poster="/vitrine/accueil-kpis.webp"
               controls
             >
               <source src="https://res.cloudinary.com/dlqwxsufy/video/upload/v1792004746/Empower_Doctor_demo_nzx1mc.mp4" type="video/mp4" />
@@ -346,28 +355,28 @@ function VideoDemo() {
 function DansLaPlateforme() {
   const vues = [
     {
-      src: '/vitrine/accueil-kpis.png',
+      src: '/vitrine/accueil-kpis.webp',
       alt: 'Vue d\'ensemble : établissements par ville et par spécialité',
       Icone: LayoutGrid,
       titre: 'Vue d\'ensemble',
       desc: '12 597 établissements répartis sur 6 villes et 20+ spécialités, filtrables en un clic.',
     },
     {
-      src: '/vitrine/scoring-classement.png',
+      src: '/vitrine/scoring-classement.webp',
       alt: 'Classement des zones par score géospatial',
       Icone: Target,
       titre: 'Classement des zones',
       desc: 'Chaque zone reçoit un score sur 100 — démographie, pouvoir d\'achat, saturation concurrentielle — pour trier les meilleures implantations pour votre spécialité.',
     },
     {
-      src: '/vitrine/analytics.png',
+      src: '/vitrine/analytics.webp',
       alt: 'Analytique géospatiale par arrondissement',
       Icone: BarChart3,
       titre: 'Analytique géospatiale',
       desc: 'Table croisée population, densité, pyramide des âges, prix immobilier et saturation par arrondissement.',
     },
     {
-      src: '/vitrine/simulateur.png',
+      src: '/vitrine/simulateur.webp',
       alt: 'Simulateur de crédit professionnel',
       Icone: Landmark,
       titre: 'Simulateur de crédit',
@@ -420,8 +429,8 @@ function DansLaPlateforme() {
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <CadreNavigateur src="/vitrine/bp-graphique.png" alt="Graphique d'évolution charges / chiffre d'affaires / résultat net" accent="#2563eb" />
-            <CadreNavigateur src="/vitrine/bp-cpc.png" alt="Compte de résultat prévisionnel sur 5 ans" accent="#4f46e5" />
+            <CadreNavigateur src="/vitrine/bp-graphique.webp" alt="Graphique d'évolution charges / chiffre d'affaires / résultat net" accent="#2563eb" />
+            <CadreNavigateur src="/vitrine/bp-cpc.webp" alt="Compte de résultat prévisionnel sur 5 ans" accent="#4f46e5" />
           </div>
         </div>
 
@@ -441,7 +450,7 @@ function DansLaPlateforme() {
               </p>
             </div>
           </div>
-          <CadreNavigateur src="/vitrine/admin-dashboard.png" alt="Dashboard d'administration interne" accent="#4f46e5" />
+          <CadreNavigateur src="/vitrine/admin-dashboard.webp" alt="Dashboard d'administration interne" accent="#4f46e5" />
         </div>
       </div>
     </section>
